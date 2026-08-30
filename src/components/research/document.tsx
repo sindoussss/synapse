@@ -37,7 +37,7 @@ export function ResearchDocument() {
       <ResearchNav />
       <div className="research-main">
       <article className="research-doc">
-        <p className="research-kicker">Engineering research presentation · not a product landing page</p>
+        <p className="research-kicker">Engineering research presentation · not a product page</p>
         <h1 className="research-title">
           SYNAPSE: Evidence-Driven Autonomous Web Development
         </h1>
