@@ -10,9 +10,11 @@ Do not paste keys into issues, pull requests, or markdown. Provider tokens, Gmai
 
 ## Surfaces
 
+Source tree: [https://github.com/sindoussss/synapse](https://github.com/sindoussss/synapse)
+
 | Path | Role |
 |---|---|
-| `/research` | Archival paper. No operator navigation. |
+| `/research` | Archival paper. No operator navigation. GitHub is linked from the paper chrome. |
 | `/` | Operator console for the evaluated control plane. |
 
 ## Evidence files

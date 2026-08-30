@@ -518,3 +518,23 @@ export function SecurityBoundaryFigure() {
     </figure>
   );
 }
+
+export function ScreenshotFigure({
+  src,
+  alt,
+  title,
+  caption,
+}: {
+  src: string;
+  alt: string;
+  title: string;
+  caption: string;
+}) {
+  return (
+    <figure className="figure">
+      <div className="figure-head">{title}</div>
+      <img className="figure-photo" src={src} alt={alt} />
+      <figcaption className="figure-cap">{caption}</figcaption>
+    </figure>
+  );
+}

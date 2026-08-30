@@ -23,7 +23,11 @@ export function ResearchNav() {
       </nav>
       <div className="sidebar-aside">
         {PAPER.repositoryUrl ? (
-          <a href={PAPER.repositoryUrl} rel="noreferrer">
+          <a
+            href={PAPER.repositoryUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             GitHub
           </a>
         ) : (

@@ -27,9 +27,11 @@ const mono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "SYNAPSE — Evidence-Driven Autonomous Web Development",
   description: PAPER.description,
+  authors: [{ name: PAPER.authors[0].name, url: PAPER.repositoryUrl ?? undefined }],
   openGraph: {
     title: "SYNAPSE — Evidence-Driven Autonomous Web Development",
     description: PAPER.description,
+    url: PAPER.repositoryUrl ?? undefined,
   },
 };
 

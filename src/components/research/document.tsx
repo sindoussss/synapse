@@ -19,6 +19,7 @@ import {
   EvidenceFigure,
   PaymentGateFigure,
   ProvenanceExplorer,
+  ScreenshotFigure,
   SecurityBoundaryFigure,
   VersionTimeline,
   WorkerRecoveryFigure,
@@ -80,7 +81,15 @@ export function ResearchDocument() {
           </div>
           <div>
             <dt>Repository</dt>
-            <dd>{PAPER.repositoryUrl ?? "URL not published in this workspace"}</dd>
+            <dd>
+              {PAPER.repositoryUrl ? (
+                <a href={PAPER.repositoryUrl} target="_blank" rel="noopener noreferrer">
+                  {PAPER.repositoryUrl.replace(/^https:\/\//, "")}
+                </a>
+              ) : (
+                "URL not published in this workspace"
+              )}
+            </dd>
           </div>
           <div>
             <dt>Research status</dt>
@@ -241,6 +250,24 @@ export function ResearchDocument() {
           <ArchitectureFigure />
         </section>
 
+        <section id="operator-console">
+          <h2>2.3.1 Operator console</h2>
+          <p>
+            The evaluated implementation includes a separate operator console from this
+            paper. The screenshot below is internal engineering evidence of that console
+            as captured on 31 August 2026. It illustrates layout and governance surfaces,
+            not live production traffic. Counts visible in the capture (queued work, leads,
+            pending approvals) are instance state at capture time and are not results of
+            this paper.
+          </p>
+          <ScreenshotFigure
+            src="/research/operator-overview.png"
+            alt="SYNAPSE operator console showing operations overview, a strategic goal input, running work, and a fleet table."
+            title="Figure. Operator overview (internal capture)"
+            caption="INTERNAL_ENGINEERING_EVIDENCE. Operator overview: command input, running work, and fleet roster. Source tree: github.com/sindoussss/synapse."
+          />
+        </section>
+
         <section id="arch-02">
           <h2>2.4 Design intelligence</h2>
           <p>
@@ -334,6 +361,12 @@ export function ResearchDocument() {
             DEGRADED, READ_ONLY, EMERGENCY_STOP) and the privileged action firewall, the
             design goal is that high-risk actions remain visible and human-gated.
           </p>
+          <ScreenshotFigure
+            src="/research/approval-queue.png"
+            alt="SYNAPSE action approval queue with filter tabs and a table of deployment and configuration requests."
+            title="Figure. Action approval queue (internal capture)"
+            caption="INTERNAL_ENGINEERING_EVIDENCE. Human-gated approval queue for privileged operations (deployment, configuration, source delivery). Statuses in the capture are instance state, not a published trial."
+          />
           <ApprovalBoundaryFigure />
           <ActionMatrix />
         </section>
@@ -635,7 +668,16 @@ export function ResearchDocument() {
         <section id="sources">
           <h2>Source / research links</h2>
           <ul>
-            <li>GitHub: {PAPER.repositoryUrl ?? "not published — placeholder only"}</li>
+            <li>
+              GitHub:{" "}
+              {PAPER.repositoryUrl ? (
+                <a href={PAPER.repositoryUrl} target="_blank" rel="noopener noreferrer">
+                  {PAPER.repositoryUrl}
+                </a>
+              ) : (
+                "not published — placeholder only"
+              )}
+            </li>
             <li>Research PDF: use the browser print dialog (A4/Letter CSS supplied)</li>
             <li>
               Methodology: <a href="#methodology">#methodology</a>
@@ -662,7 +704,13 @@ export function ResearchDocument() {
         </p>
         <p>Research project.</p>
         <nav aria-label="Footer">
-          <span>GitHub</span>
+          {PAPER.repositoryUrl ? (
+            <a href={PAPER.repositoryUrl} target="_blank" rel="noopener noreferrer">
+              GitHub
+            </a>
+          ) : (
+            <span>GitHub</span>
+          )}
           <a href="#abstract">Research</a>
           <a href="#architecture">Architecture</a>
           <a href="#methodology">Methodology</a>

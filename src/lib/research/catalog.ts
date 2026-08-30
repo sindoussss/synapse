@@ -21,7 +21,7 @@ export const PAPER = {
   version: "V1.0",
   certification: "V1_CERTIFIED_WITH_LIMITATIONS",
   releaseCandidate: "RC-SYNAPSE-V1.0-PROD",
-  lastUpdated: "2026-08-30",
+  lastUpdated: "2026-08-31",
   snapshotId: "SNAP-SINDOUS-FINAL",
   sourceHash:
     "a9406accb7cc98e2689620579e0a0d4c5d88812bfd38b556b66802e3b8a3b836",
@@ -324,6 +324,7 @@ export const TOC = [
   { href: "#arch-01", n: "2.1", label: "Requirements", level: 2 },
   { href: "#gating", n: "2.2", label: "Evidence gating", level: 2 },
   { href: "#architecture", n: "2.3", label: "System architecture", level: 2 },
+  { href: "#operator-console", n: "2.3.1", label: "Operator console", level: 2 },
   { href: "#arch-02", n: "2.4", label: "Design intelligence", level: 2 },
   { href: "#arch-03", n: "2.5", label: "AI development", level: 2 },
   { href: "#arch-04", n: "2.6", label: "Verification", level: 2 },

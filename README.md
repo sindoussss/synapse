@@ -3,12 +3,26 @@
 **John Daniel M. Casili**  
 SYNAPSE Research & Engineering Project  
 
-Version 1.0 · `V1_CERTIFIED_WITH_LIMITATIONS` · 30 August 2026  
+Version 1.0 · `V1_CERTIFIED_WITH_LIMITATIONS` · 31 August 2026  
 Release candidate `RC-SYNAPSE-V1.0-PROD`
+
+**Source:** [github.com/sindoussss/synapse](https://github.com/sindoussss/synapse)
 
 This repository contains the evaluated implementation and supporting engineering reports for SYNAPSE, a wrapping architecture for AI-assisted web development. Generation is treated as an untrusted emission. Promotion to clients, payment, and production is a separate, fail-closed process.
 
 The long-form paper is rendered at `/research` when the application is run locally. This README is the archival abstract and reproduction note for the source tree.
+
+## Operator surfaces
+
+The captures below are **internal engineering evidence** of the operator console in this tree (31 August 2026). Visible counters and request statuses are instance state at capture time, not trial results.
+
+![Operator overview](public/research/operator-overview.png)
+
+*Operations overview: command input, running work, and fleet roster.*
+
+![Action approval queue](public/research/approval-queue.png)
+
+*Human-gated approval queue for privileged operations (deployment, configuration, source delivery).*
 
 ---
 
