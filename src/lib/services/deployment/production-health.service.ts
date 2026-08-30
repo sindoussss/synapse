@@ -1,0 +1,62 @@
+import fs from "fs";
+import path from "path";
+import { PostDeploymentVerificationRecord } from "./deployment-adapter";
+
+export interface ProductionHealthEvaluation {
+  projectId: string;
+  deploymentId: string;
+  url: string;
+  timestamp: string;
+  httpHealth: "HEALTHY" | "DEGRADED" | "FAILED";
+  routeHealth: "HEALTHY" | "DEGRADED" | "FAILED";
+  runtimeHealth: "HEALTHY" | "DEGRADED" | "FAILED";
+  interactionHealth: "HEALTHY" | "DEGRADED" | "FAILED";
+  visualHealth: "HEALTHY" | "DEGRADED" | "FAILED";
+  contentHealth: "HEALTHY" | "DEGRADED" | "FAILED";
+  securityHealth: "HEALTHY" | "DEGRADED" | "FAILED";
+  overallHealth: "HEALTHY" | "DEGRADED" | "FAILED";
+  blockers: string[];
+  evidenceIds: string[];
+}
+
+export class ProductionHealthService {
+  evaluateHealth(verif: PostDeploymentVerificationRecord, projectId: string): ProductionHealthEvaluation {
+    const blockers: string[] = [];
+    const evidenceIds: string[] = [];
+
+    if (verif.httpHealth === "FAILED") blockers.push("HTTP endpoint returned error status.");
+    if (verif.routeHealth === "FAILED") blockers.push("Expected route unreachable.");
+    if (verif.runtimeHealth === "FAILED") blockers.push("Unhandled exception detected in runtime.");
+    if (verif.interactionHealth === "FAILED") blockers.push("Critical interactive calculator/form failed.");
+    if (verif.contentHealth === "FAILED") blockers.push("Unsupported factual claim found in live content.");
+    if (verif.securityHealth === "FAILED") blockers.push("Critical security header missing.");
+
+    verif.checks.forEach((c) => {
+      evidenceIds.push(`CHECK-${c.name.replace(/\s+/g, "-").toUpperCase()}-${c.status}`);
+    });
+
+    let overall: "HEALTHY" | "DEGRADED" | "FAILED" = "HEALTHY";
+    if (blockers.length > 0) {
+      overall = blockers.some((b) => b.includes("HTTP") || b.includes("runtime")) ? "FAILED" : "DEGRADED";
+    }
+
+    return {
+      projectId,
+      deploymentId: verif.deploymentId,
+      url: verif.url,
+      timestamp: new Date().toISOString(),
+      httpHealth: verif.httpHealth,
+      routeHealth: verif.routeHealth,
+      runtimeHealth: verif.runtimeHealth,
+      interactionHealth: verif.interactionHealth,
+      visualHealth: verif.visualHealth,
+      contentHealth: verif.contentHealth,
+      securityHealth: verif.securityHealth,
+      overallHealth: overall,
+      blockers,
+      evidenceIds,
+    };
+  }
+}
+
+export const productionHealthService = new ProductionHealthService();

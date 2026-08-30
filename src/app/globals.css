@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #111111;
+}
+
+body {
+  background-color: #ffffff;
+  color: #111111;
+  font-family: var(--font-ops-sans), "Segoe UI", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #fff;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #ccc;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+}
+
+.ops-shell {
+  font-family: var(--font-ops-sans), "Segoe UI", system-ui, sans-serif;
+  color: #111111;
+  font-weight: 400;
+  letter-spacing: -0.011em;
+}
+
+.ops-shell .font-mono,
+.ops-shell .font-serif {
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.ops-display {
+  font-family: var(--font-ops-display), "Times New Roman", serif;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+}
+
+.ops-shell .tracking-wider,
+.ops-shell .tracking-widest {
+  letter-spacing: 0.02em;
+}
+
+.ops-shell .text-\[10px\],
+.ops-shell .text-\[11px\] {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ops-shell .text-xs {
+  font-size: 13.5px;
+  line-height: 1.5;
+}

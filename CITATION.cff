@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+title: "SYNAPSE: Evidence-Driven Autonomous Web Development"
+message: "If you use this work, please cite it as below."
+type: software
+authors:
+  - family-names: Casili
+    given-names: John Daniel M.
+    affiliation: SYNAPSE Research & Engineering Project
+version: "1.0"
+date-released: "2026-08-30"
+abstract: >-
+  An engineering research implementation exploring evidence-gated AI
+  development, deterministic verification, human governance, durable
+  workflow execution, and auditable software production.
+keywords:
+  - AI software engineering
+  - agentic development
+  - human-in-the-loop
+  - evidence gating
+  - software verification
+license: MIT
