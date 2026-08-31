@@ -23,6 +23,17 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, 
   const [taskCreatedMessage, setTaskCreatedMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const syncLocalTask = (task: any) => {
+    if (!task || typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem("synapse_ops_tasks_v2");
+      const curTasks = raw ? JSON.parse(raw) : [];
+      if (!curTasks.some((t: any) => t.id === task.id)) {
+        localStorage.setItem("synapse_ops_tasks_v2", JSON.stringify([task, ...curTasks]));
+      }
+    } catch {}
+  };
+
   const handleCreateAuditTask = async () => {
     setCreatingAudit(true);
     setErrorMessage(null);
@@ -34,6 +45,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, 
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "Failed to create audit task.");
+      syncLocalTask(data.task);
       setTaskCreatedMessage(`Queued Website Audit task created: ${data.task.id}`);
       await refresh();
     } catch (err: any) {
@@ -54,6 +66,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, 
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "Failed to create mockup task.");
+      syncLocalTask(data.task);
       setTaskCreatedMessage(`Queued Mockup Development task created: ${data.task.id}`);
       await refresh();
     } catch (err: any) {
@@ -74,6 +87,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, 
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "Failed to prepare outreach task.");
+      syncLocalTask(data.task);
       setTaskCreatedMessage(`Queued Outreach Draft task created: ${data.task.id}`);
       await refresh();
     } catch (err: any) {
