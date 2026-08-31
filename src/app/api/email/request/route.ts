@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { salesSendService } from "@/lib/services/sales/sales-send.service";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
 
 export async function POST(req: NextRequest) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const body = await req.json();
     const { outreachDraftId, recipientOverride } = body;
 

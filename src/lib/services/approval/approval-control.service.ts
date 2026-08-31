@@ -1,6 +1,23 @@
-import { approvalControlRepository, ApprovalRequestRecord, ApprovalDecisionRecord } from "../../repositories/approval-control.repository";
+import { approvalControlRepository, ApprovalRequestRecord, ApprovalDecisionRecord, ApprovalRequestType, ApprovalStatus, ApprovalRiskLevel } from "../../repositories/approval-control.repository";
 import { emergencyKillSwitch } from "../security/emergency-kill-switch.service";
-import { privilegedActionFirewall } from "../security/privileged-action-firewall.service";
+import { privilegedActionFirewall, ActorRole } from "../security/privileged-action-firewall.service";
+import { exceptionService } from "./exception.service";
+
+export type ApprovalBoardItem = {
+  approvalRequestId: string;
+  projectId: string;
+  requestType: ApprovalRequestType;
+  status: ApprovalStatus;
+  riskLevel: ApprovalRiskLevel;
+  proposedAction: string;
+};
+
+export type ApprovalPagePrincipal = {
+  principalId?: string;
+  actorRole: ActorRole;
+  organizationId?: string;
+  workspaceId?: string;
+};
 
 export interface ApprovalPreviewBundle {
   request: ApprovalRequestRecord;
@@ -17,6 +34,74 @@ export interface ApprovalPreviewBundle {
 }
 
 export class ApprovalControlService {
+  private authorizeOperatorRead(principal: ApprovalPagePrincipal) {
+    return privilegedActionFirewall.evaluate({
+      action: "OPERATOR_APPROVAL",
+      actor: principal.principalId || "unknown",
+      actorRole: principal.actorRole,
+    });
+  }
+
+  private toBoardItem(req: ApprovalRequestRecord): ApprovalBoardItem {
+    return {
+      approvalRequestId: req.approvalRequestId,
+      projectId: req.projectId,
+      requestType: req.requestType,
+      status: req.status,
+      riskLevel: req.riskLevel,
+      proposedAction: req.proposedAction,
+    };
+  }
+
+  /**
+   * Tenant/project-scoped list for an authenticated operator.
+   * Does not dump the store when org is missing. Does not return hashes.
+   */
+  listVisibleForPrincipal(
+    principal: ApprovalPagePrincipal,
+    opts?: { projectId?: string }
+  ): { requests: ApprovalBoardItem[]; exceptionCount: number; denialReason?: string } {
+    const auth = this.authorizeOperatorRead(principal);
+    if (!auth.allowed) {
+      return { requests: [], exceptionCount: 0, denialReason: auth.denialReason };
+    }
+    if (!principal.organizationId) {
+      return { requests: [], exceptionCount: 0, denialReason: "TENANT_SCOPE_REQUIRED" };
+    }
+
+    const requests = approvalControlRepository
+      .listRequests({
+        organizationId: principal.organizationId,
+        workspaceId: principal.workspaceId,
+        projectId: opts?.projectId,
+      })
+      .map((r) => this.toBoardItem(r));
+
+    const exceptionCount = exceptionService.listExceptions({
+      organizationId: principal.organizationId,
+      projectId: opts?.projectId,
+    }).length;
+
+    return { requests, exceptionCount };
+  }
+
+  getVisiblePreview(
+    principal: ApprovalPagePrincipal,
+    approvalRequestId: string,
+    opts?: { projectId?: string }
+  ): ApprovalPreviewBundle | null {
+    const auth = this.authorizeOperatorRead(principal);
+    if (!auth.allowed) return null;
+    if (!principal.organizationId) return null;
+
+    const req = approvalControlRepository.getRequest(approvalRequestId, principal.organizationId);
+    if (!req) return null;
+    if (principal.workspaceId && req.workspaceId !== principal.workspaceId) return null;
+    if (opts?.projectId && req.projectId !== opts.projectId) return null;
+
+    return this.getApprovalPreview(approvalRequestId, principal.organizationId);
+  }
+
   getApprovalPreview(approvalRequestId: string, callerOrgId?: string): ApprovalPreviewBundle | null {
     const req = approvalControlRepository.getRequest(approvalRequestId, callerOrgId);
     if (!req) return null;

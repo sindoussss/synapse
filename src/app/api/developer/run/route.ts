@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { developerAgentService } from "@/lib/services/developer/developer-agent.service";
 import { developerIterativeEngineService } from "@/lib/services/developer/developer-iterative-engine.service";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
 
 export async function POST(req: Request) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const body = await req.json();
     if (body.mode === "iterative" || body.iterative) {
       const report = await developerIterativeEngineService.runIterativeEngineeringPipeline(body);

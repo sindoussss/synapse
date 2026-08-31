@@ -239,8 +239,18 @@ async function runFinalCertification() {
 
   // ── 27. Secret package leakage
   try {
-    const secAudit = securityAuditService.auditSecretExposure("Included GMAIL_APP_PASSWORD=fake_app_password_xxxxxxxx in package bundle", "delivery_package");
-    secAudit && secAudit.severity === "CRITICAL" ? record("27. Secret package leakage", "PASS", "Secret exposure in package bundle intercepted.") : record("27. Secret package leakage", "FAIL", "Secret leakage allowed.");
+    const sentinel = "Included GMAIL_APP_PASSWORD=SYN-TEST-SENTINEL-NOT-A-REAL-SECRET in package bundle";
+    const secAudit = securityAuditService.auditSecretExposure(sentinel, "delivery_package");
+    const cleanAudit = securityAuditService.auditSecretExposure("package files: README.md app/page.tsx", "delivery_package");
+    const live = process.env.GMAIL_APP_PASSWORD;
+    let liveCaught = true;
+    if (live && live.length > 6 && live !== "SYN-TEST-SENTINEL-NOT-A-REAL-SECRET") {
+      const liveAudit = securityAuditService.auditSecretExposure(`bundle contained ${live}`, "delivery_package");
+      liveCaught = Boolean(liveAudit && liveAudit.severity === "CRITICAL");
+    }
+    secAudit && secAudit.severity === "CRITICAL" && !cleanAudit && liveCaught
+      ? record("27. Secret package leakage", "PASS", "Sentinel assignment and live env values intercepted; clean artifact not flagged.")
+      : record("27. Secret package leakage", "FAIL", "Secret leakage allowed.");
   } catch (e: any) { record("27. Secret package leakage", "FAIL", e.message); }
 
   // ── 28. Unauthorized deployment

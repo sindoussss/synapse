@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { proposalBuilderService } from "@/lib/services/proposals/proposal-builder.service";
 import { proposalRepository } from "@/lib/repositories/proposal.repository";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
 
 export async function POST(req: NextRequest) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const body = await req.json();
     const { proposalId, action } = body;
 

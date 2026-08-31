@@ -36,6 +36,20 @@ const SECRETS_NEVER_IN_LOGS = [
   "GROQ_API_KEY",
   "GEMINI_API_KEY",
   "NEXT_AUTH_SECRET",
+  "SYNAPSE_OPERATOR_TOKEN",
+  "SYNAPSE_OPERATOR_PASSWORD",
+  "SYNAPSE_SESSION_SECRET",
+];
+
+const SECRET_ASSIGNMENT_PATTERNS = [
+  /\bPAYPAL_CLIENT_SECRET\s*=\s*\S+/,
+  /\bGMAIL_APP_PASSWORD\s*=\s*\S+/,
+  /\bGROQ_API_KEY\s*=\s*\S+/,
+  /\bGEMINI_API_KEY\s*=\s*\S+/,
+  /\bNEXT_AUTH_SECRET\s*=\s*\S+/,
+  /\bSYNAPSE_OPERATOR_TOKEN\s*=\s*\S+/,
+  /\bSYNAPSE_OPERATOR_PASSWORD\s*=\s*\S+/,
+  /\bSYNAPSE_SESSION_SECRET\s*=\s*\S+/,
 ];
 
 const INJECTION_PATTERNS = [
@@ -142,6 +156,20 @@ export class SecurityAuditService {
           severity: "CRITICAL",
           affectedResource: `env:${key}`,
           evidence: `Secret '${key}' value detected in: ${context}. Value NOT logged.`,
+          deterministicRemediation: "Immediately scrub content. Rotate credential. Audit all logs.",
+        });
+        this.findings.push(f);
+        return f;
+      }
+    }
+
+    for (const pattern of SECRET_ASSIGNMENT_PATTERNS) {
+      if (pattern.test(content)) {
+        const f = this.newFinding({
+          category: "SECRET_EXPOSURE",
+          severity: "CRITICAL",
+          affectedResource: "secret-assignment",
+          evidence: `Secret assignment pattern detected in: ${context}. Value NOT logged.`,
           deterministicRemediation: "Immediately scrub content. Rotate credential. Audit all logs.",
         });
         this.findings.push(f);

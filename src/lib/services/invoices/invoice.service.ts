@@ -8,6 +8,7 @@ import { agreementDeliveryRepository } from "../../repositories/agreement-delive
 import { opportunityRepository } from "../../repositories/opportunity.repository";
 import { activityRepository } from "../../repositories/activity.repository";
 import { gmailEmailProvider } from "../../email/providers/gmail.provider";
+import { emergencyKillSwitch } from "../security/emergency-kill-switch.service";
 
 export interface CreateInvoiceParams {
   agreementId: string;
@@ -198,6 +199,11 @@ export class InvoiceService {
   }
 
   async approveInvoice(invoiceId: string): Promise<InvoiceRecord> {
+    const killCheck = emergencyKillSwitch.isOperationAllowed("PAYMENT_MUTATION");
+    if (!killCheck.allowed) {
+      throw new Error(`EMERGENCY_STOP_BLOCKED: ${killCheck.blockedReason}`);
+    }
+
     const invoice = await invoiceRepository.getInvoiceById(invoiceId);
     if (!invoice) throw new Error(`Invoice not found: ${invoiceId}`);
 
@@ -391,6 +397,11 @@ export class InvoiceService {
   }
 
   async approveAndSendInvoiceDelivery(deliveryId: string): Promise<{ delivery: InvoiceDeliveryRecord; invoice: InvoiceRecord }> {
+    const killCheck = emergencyKillSwitch.isOperationAllowed("PAYMENT_MUTATION");
+    if (!killCheck.allowed) {
+      throw new Error(`EMERGENCY_STOP_BLOCKED: ${killCheck.blockedReason}`);
+    }
+
     const delivery = await invoiceRepository.getInvoiceDeliveryById(deliveryId);
     if (!delivery) throw new Error(`Delivery request not found: ${deliveryId}`);
 
@@ -488,6 +499,11 @@ export class InvoiceService {
     evidenceReference?: string;
     notes?: string;
   }): Promise<PaymentRecord> {
+    const killCheck = emergencyKillSwitch.isOperationAllowed("PAYMENT_MUTATION");
+    if (!killCheck.allowed) {
+      throw new Error(`EMERGENCY_STOP_BLOCKED: ${killCheck.blockedReason}`);
+    }
+
     const invoice = await invoiceRepository.getInvoiceById(params.invoiceId);
     if (!invoice) throw new Error(`Invoice not found: ${params.invoiceId}`);
 
@@ -529,6 +545,11 @@ export class InvoiceService {
   }
 
   async verifyPayment(paymentId: string): Promise<{ payment: PaymentRecord; invoice: InvoiceRecord }> {
+    const killCheck = emergencyKillSwitch.isOperationAllowed("PAYMENT_MUTATION");
+    if (!killCheck.allowed) {
+      throw new Error(`EMERGENCY_STOP_BLOCKED: ${killCheck.blockedReason}`);
+    }
+
     const payment = await invoiceRepository.getPaymentById(paymentId);
     if (!payment) throw new Error(`Payment not found: ${paymentId}`);
 
@@ -578,6 +599,11 @@ export class InvoiceService {
   }
 
   async reversePayment(paymentId: string, reason: string): Promise<{ payment: PaymentRecord; invoice: InvoiceRecord }> {
+    const killCheck = emergencyKillSwitch.isOperationAllowed("PAYMENT_MUTATION");
+    if (!killCheck.allowed) {
+      throw new Error(`EMERGENCY_STOP_BLOCKED: ${killCheck.blockedReason}`);
+    }
+
     const payment = await invoiceRepository.getPaymentById(paymentId);
     if (!payment) throw new Error(`Payment not found: ${paymentId}`);
 

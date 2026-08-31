@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { agreementRepository } from "@/lib/repositories/agreement.repository";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const templates = await agreementRepository.getTemplates();
     return NextResponse.json({ ok: true, templates });
   } catch (err: any) {

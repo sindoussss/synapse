@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { developerWorkspaceRepository } from "@/lib/repositories/developer-workspace.repository";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
 
 export async function GET(req: Request) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const { searchParams } = new URL(req.url);
     const projectId = searchParams.get("projectId");
     if (!projectId) return NextResponse.json({ ok: false, error: "projectId is required" }, { status: 400 });

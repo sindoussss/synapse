@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { opportunityRepository, OpportunityStage } from "@/lib/repositories/opportunity.repository";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
 
 export async function POST(req: NextRequest) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const body = await req.json();
     const { opportunityId, stage, actor, notes } = body;
 

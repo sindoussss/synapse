@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { qaAgentService } from "@/lib/services/qa/qa-agent.service";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
 
 export async function POST(req: Request) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const { runId } = await req.json();
     if (!runId) return NextResponse.json({ ok: false, error: "runId is required" }, { status: 400 });
     const run = await qaAgentService.approveQARun(runId);

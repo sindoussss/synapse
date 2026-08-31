@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { clientReviewService } from "@/lib/services/client-review/client-review.service";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
 
 export async function POST(req: Request) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const body = await req.json();
     const feedback = await clientReviewService.ingestFeedback(body);
     return NextResponse.json({ ok: true, feedback });

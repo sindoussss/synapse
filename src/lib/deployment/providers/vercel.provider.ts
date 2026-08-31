@@ -181,6 +181,7 @@ export class VercelDeploymentProvider implements DeploymentProvider {
         },
       ];
 
+      const target = metadata.target === "production" ? "production" : "preview";
       const res = await fetch(apiUrl, {
         method: "POST",
         headers: {
@@ -193,8 +194,9 @@ export class VercelDeploymentProvider implements DeploymentProvider {
           projectSettings: {
             framework: "nextjs",
           },
-          target: "preview",
+          target,
         }),
+        signal: AbortSignal.timeout(20000),
       });
 
       const data = await res.json();
@@ -226,15 +228,82 @@ export class VercelDeploymentProvider implements DeploymentProvider {
         validation,
       };
     } catch (err: any) {
-      buildLogs.push(`[ERROR] Network / Deployment Exception: ${err.message}`);
+      const timedOut = err?.name === "TimeoutError" || err?.name === "AbortError" || /timeout/i.test(String(err?.message));
+      const errMsg = timedOut
+        ? "DEPLOYMENT_BLOCKED: provider timeout"
+        : err.message || "Failed to communicate with Vercel deployment provider.";
+      buildLogs.push(`[ERROR] Network / Deployment Exception: ${errMsg}`);
       return {
         success: false,
         status: "failed",
         buildLogs,
         validation,
-        error: err.message || "Failed to communicate with Vercel deployment provider.",
+        error: errMsg,
       };
     }
+  }
+
+  /**
+   * Production deploy via the existing Vercel provider.
+   * Does not invent URLs, deployment IDs, or health. Fail closed if unconfigured.
+   */
+  async deployProduction(params: {
+    projectDir: string;
+    companyName: string;
+    projectId?: string;
+  }): Promise<{
+    ok: boolean;
+    evidenceClass: "LIVE" | "CONTROLLED_TEST";
+    providerDeploymentId: string;
+    productionUrl: string;
+    error?: string;
+  }> {
+    const unset = {
+      evidenceClass: "LIVE" as const,
+      providerDeploymentId: "NO_PROVIDER_DEPLOYMENT_ID",
+      productionUrl: "NOT_VERIFIED",
+    };
+
+    if (!this.isConfigured()) {
+      return {
+        ok: false,
+        ...unset,
+        error: "DEPLOYMENT_BLOCKED: NOT_SUPPORTED: VERCEL_TOKEN is not configured.",
+      };
+    }
+
+    const result = await this.deployPreview(params.projectDir, {
+      projectName: params.companyName,
+      companyName: params.companyName,
+      redesignProjectId: params.projectId || "production-release",
+      target: "production",
+    });
+
+    if (!result.success) {
+      return {
+        ok: false,
+        ...unset,
+        error: result.error?.startsWith("DEPLOYMENT_BLOCKED")
+          ? result.error
+          : `DEPLOYMENT_BLOCKED: ${result.error || "provider rejected deployment"}`,
+      };
+    }
+
+    if (!result.providerDeploymentId) {
+      return {
+        ok: false,
+        ...unset,
+        error: "DEPLOYMENT_BLOCKED: provider returned no deployment id.",
+      };
+    }
+
+    const url = result.previewUrl && /^https?:\/\//i.test(result.previewUrl) ? result.previewUrl : "NOT_VERIFIED";
+    return {
+      ok: true,
+      evidenceClass: "LIVE",
+      providerDeploymentId: result.providerDeploymentId,
+      productionUrl: url,
+    };
   }
 
   async getDeploymentStatus(deploymentId: string): Promise<DeploymentStatusResult> {
@@ -275,6 +344,100 @@ export class VercelDeploymentProvider implements DeploymentProvider {
       };
     } catch (err: any) {
       return { status: "failed", error: err.message };
+    }
+  }
+
+  /**
+   * Request a custom domain via the existing Vercel provider.
+   * Does not invent TLS, HTTP, or browser health. Those remain NOT_VERIFIED
+   * unless a later real probe exists (this method does not probe).
+   */
+  async requestCustomDomain(params: {
+    domain: string;
+  }): Promise<{
+    ok: boolean;
+    evidenceClass: "LIVE" | "CONTROLLED_TEST";
+    ownershipStatus: "NOT_VERIFIED" | "NOT_SUPPORTED" | "verified";
+    verificationStatus: "NOT_VERIFIED" | "NOT_SUPPORTED";
+    tlsStatus: "NOT_VERIFIED";
+    httpStatus: "NOT_VERIFIED";
+    healthStatus: "NOT_VERIFIED";
+    provider: "vercel";
+    error?: string;
+  }> {
+    const unset = {
+      evidenceClass: "LIVE" as const,
+      tlsStatus: "NOT_VERIFIED" as const,
+      httpStatus: "NOT_VERIFIED" as const,
+      healthStatus: "NOT_VERIFIED" as const,
+      provider: "vercel" as const,
+    };
+
+    if (!this.isConfigured()) {
+      return {
+        ok: false,
+        ...unset,
+        ownershipStatus: "NOT_SUPPORTED",
+        verificationStatus: "NOT_SUPPORTED",
+        error: "DNS_PROVIDER_NOT_CONFIGURED: VERCEL_TOKEN is not configured. DNS cutover is NOT_SUPPORTED.",
+      };
+    }
+
+    const projectId = process.env.VERCEL_PROJECT_ID?.trim();
+    if (!projectId) {
+      return {
+        ok: false,
+        ...unset,
+        ownershipStatus: "NOT_SUPPORTED",
+        verificationStatus: "NOT_SUPPORTED",
+        error: "DNS_PROVIDER_NOT_CONFIGURED: VERCEL_PROJECT_ID is not configured. DNS cutover is NOT_SUPPORTED.",
+      };
+    }
+
+    const token = this.getToken()!;
+    const teamId = this.getTeamId();
+    let apiUrl = `https://api.vercel.com/v10/projects/${encodeURIComponent(projectId)}/domains`;
+    if (teamId) apiUrl += `?teamId=${encodeURIComponent(teamId)}`;
+
+    try {
+      const res = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: params.domain }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) {
+        return {
+          ok: false,
+          ...unset,
+          ownershipStatus: "NOT_VERIFIED",
+          verificationStatus: "NOT_VERIFIED",
+          error: `DNS_PROVIDER_REJECTED: ${data.error?.message || res.status}`,
+        };
+      }
+
+      const providerVerified = data.verified === true;
+      return {
+        ok: true,
+        evidenceClass: "LIVE",
+        ownershipStatus: providerVerified ? "verified" : "NOT_VERIFIED",
+        verificationStatus: "NOT_VERIFIED",
+        tlsStatus: "NOT_VERIFIED",
+        httpStatus: "NOT_VERIFIED",
+        healthStatus: "NOT_VERIFIED",
+        provider: "vercel",
+      };
+    } catch (err: any) {
+      return {
+        ok: false,
+        ...unset,
+        ownershipStatus: "NOT_VERIFIED",
+        verificationStatus: "NOT_VERIFIED",
+        error: `DNS_PROVIDER_REJECTED: ${err?.message || err}`,
+      };
     }
   }
 }

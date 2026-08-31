@@ -3,12 +3,21 @@ import { approvalRepository } from "@/lib/repositories/approval.repository";
 import { taskService } from "@/lib/services/task.service";
 import { activityRepository } from "@/lib/repositories/activity.repository";
 import { pilotService } from "@/lib/services/pilot/pilot.service";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
+import { emergencyKillSwitch } from "@/lib/services/security/emergency-kill-switch.service";
 
 export async function POST(req: NextRequest) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const { approvalId } = await req.json();
     if (!approvalId) {
       return NextResponse.json({ ok: false, error: "approvalId is required" }, { status: 400 });
+    }
+
+    const killCheck = emergencyKillSwitch.isOperationAllowed("DEPLOYMENT");
+    if (!killCheck.allowed) {
+      return NextResponse.json({ ok: false, error: `EMERGENCY_STOP_BLOCKED: ${killCheck.blockedReason}` }, { status: 400 });
     }
 
     const approval = await approvalRepository.getById(approvalId);

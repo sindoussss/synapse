@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { responseDraftRepository } from "@/lib/repositories/response-draft.repository";
 import { activityRepository } from "@/lib/repositories/activity.repository";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
 
 export async function POST(req: NextRequest) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const body = await req.json();
     const { responseId, action, updates } = body;
 

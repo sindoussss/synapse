@@ -1,7 +1,7 @@
 "use client";
 
-import React from "react";
-import { usePathname } from "next/navigation";
+import React, { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Menu } from "lucide-react";
 import { useTaskManager, type EnvironmentFilter } from "@/context/TaskContext";
 
@@ -11,7 +11,30 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
   const pathname = usePathname();
+  const router = useRouter();
   const { dbStatus, dbStatusMessage, environmentFilter, setEnvironmentFilter } = useTaskManager();
+  const [signedIn, setSignedIn] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/session")
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled) setSignedIn(Boolean(data?.authenticated));
+      })
+      .catch(() => {
+        if (!cancelled) setSignedIn(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
+
+  async function signOut() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.replace("/login");
+    router.refresh();
+  }
 
   const getPageMeta = () => {
     switch (pathname) {
@@ -80,6 +103,15 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
             ? "Supabase disconnected"
             : "Local repository"}
         </span>
+        {signedIn ? (
+          <button
+            type="button"
+            onClick={signOut}
+            className="text-[#111] underline-offset-2 hover:underline cursor-pointer"
+          >
+            Sign out
+          </button>
+        ) : null}
       </div>
     </header>
   );

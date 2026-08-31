@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { agreementDeliveryService } from "@/lib/services/agreements/agreement-delivery.service";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
 
 export async function POST(req: NextRequest) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const body = await req.json();
     const { documentId, recipient, subject, message } = body;
     if (!documentId || !recipient) {

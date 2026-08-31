@@ -9,9 +9,12 @@ import { multiTenantService } from "@/lib/services/multi-tenant/multi-tenant.ser
 import { pilotService } from "@/lib/services/pilot/pilot.service";
 import { pilotRepository } from "@/lib/repositories/pilot.repository";
 import { taskService } from "@/lib/services/task.service";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
 
 export async function GET(req: NextRequest) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const health = await modelRouter.getAllProvidersHealth();
     return NextResponse.json({
       ok: true,
@@ -29,6 +32,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const body = await req.json();
     const { action, provider, prompt, companyName, domain, text, sourceUrl, sourceText, claim } = body;
 

@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { intelligenceService } from "@/lib/services/intelligence/intelligence.service";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
 
 export async function POST(req: Request) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const body = await req.json();
     const result = await intelligenceService.validateRecommendation(body);
     return NextResponse.json({ ok: true, ...result });

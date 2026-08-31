@@ -1,11 +1,12 @@
-import { approvalControlRepository } from "@/lib/repositories/approval-control.repository";
-import { exceptionService } from "@/lib/services/approval/exception.service";
+import { approvalControlService } from "@/lib/services/approval/approval-control.service";
+import { requireOperatorPagePrincipal } from "@/lib/http/require-operator-page";
 import { ApprovalsBoard } from "./ApprovalsBoard";
 
-export default function GlobalApprovalsPage() {
-  const orgId = "ORG-CASILI-01";
-  const requests = approvalControlRepository.listRequests({ organizationId: orgId });
-  const exceptions = exceptionService.listExceptions({ organizationId: orgId });
+export const dynamic = "force-dynamic";
 
-  return <ApprovalsBoard requests={requests} exceptionCount={exceptions.length} />;
+export default async function GlobalApprovalsPage() {
+  const principal = await requireOperatorPagePrincipal("/approvals");
+  const { requests, exceptionCount } = approvalControlService.listVisibleForPrincipal(principal);
+
+  return <ApprovalsBoard requests={requests} exceptionCount={exceptionCount} />;
 }

@@ -7,6 +7,9 @@ import { developerWorkspaceRepository } from "../../repositories/developer-works
 import { activityRepository } from "../../repositories/activity.repository";
 import { emergencyKillSwitch } from "../security/emergency-kill-switch.service";
 import { privilegedActionFirewall, ActorRole } from "../security/privileged-action-firewall.service";
+import { productionProjectRepository } from "../../repositories/production-project.repository";
+import { vercelDeploymentProvider } from "../../deployment/providers/vercel.provider";
+import { productionHealthService } from "../deployment/production-health.service";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
@@ -205,35 +208,89 @@ export class ProductionReleaseService {
     if (!release) throw new Error(`Release not found: ${releaseId}`);
 
     const now = new Date().toISOString();
-    const providerDeploymentId = `dpl_prod_${Date.now().toString().slice(-8)}`;
-    const productionUrl = `https://apex-logistics-prod.vercel.app`;
-
-    const dnsPlan = {
-      domain: "apex.casili.dev",
-      recordType: "CNAME",
-      name: "apex",
-      value: "cname.vercel-dns.com",
-      ttl: 300,
-      preservedRecords: ["MX (mail.apexlogistics.com)", "TXT (v=spf1 include:_spf.google.com ~all)", "TXT (v=DMARC1; p=reject)"],
+    const unverifiedHealth = {
+      httpStatus: "NOT_VERIFIED",
+      healthStatus: "NOT_VERIFIED",
+      tlsStatus: "NOT_VERIFIED",
+      homepageRender: "NOT_VERIFIED",
+      evidenceClass: "LIVE" as const,
     };
 
-    const healthEvidence = {
-      httpStatus: 200,
-      tlsStatus: "VALID",
-      homepageRender: "SUCCESS",
-      mobileViewport: "PASS (375px verified)",
-      desktopViewport: "PASS (1440px verified)",
-      consoleErrors: 0,
-    };
-
-    const updated = await productionReleaseRepository.updateRelease(release.id, {
-      status: "waiting_dns_approval",
-      providerDeploymentId,
-      productionUrl,
+    await productionReleaseRepository.updateRelease(release.id, {
+      status: "approved",
       approvedBy: "operator",
       approvedAt: now,
+      healthEvidence: unverifiedHealth,
+    });
+
+    const project = await projectRepository.getProjectById(release.projectId);
+    const companyName =
+      (typeof project?.metadata?.companyName === "string" && project.metadata.companyName) ||
+      project?.name ||
+      "synapse-production";
+    const projectDir = path.resolve(process.cwd(), "release-workspaces", release.id);
+
+    await productionReleaseRepository.updateRelease(release.id, { status: "building" });
+
+    const deployResult = await vercelDeploymentProvider.deployProduction({
+      projectDir,
+      companyName,
+      projectId: release.projectId,
+    });
+
+    if (!deployResult.ok) {
+      const failedStatus = /NOT_SUPPORTED/i.test(deployResult.error || "") ? "approved" : "failed";
+      await productionReleaseRepository.updateRelease(release.id, {
+        status: failedStatus,
+        providerDeploymentId: "NO_PROVIDER_DEPLOYMENT_ID",
+        productionUrl: "NOT_VERIFIED",
+        healthEvidence: {
+          ...unverifiedHealth,
+          error: deployResult.error,
+        },
+        ...(failedStatus === "failed" ? { failedAt: now } : {}),
+      });
+
+      try {
+        await activityRepository.add({
+          agentName: "Operator",
+          type: "lead_created" as any,
+          level: "warning",
+          title: `Production Release Approved (deployment not executed): ${release.releaseNumber}`,
+          description: `Operator authorized ${release.releaseNumber}. Provider did not deploy. ${deployResult.error}`,
+        });
+      } catch {}
+
+      throw new Error(deployResult.error || "DEPLOYMENT_BLOCKED: NOT_SUPPORTED");
+    }
+
+    let healthEvidence: Record<string, any> = {
+      httpStatus: "NOT_VERIFIED",
+      healthStatus: "NOT_VERIFIED",
+      tlsStatus: "NOT_VERIFIED",
+      homepageRender: "NOT_VERIFIED",
+      evidenceClass: deployResult.evidenceClass,
+      deploymentUrl: deployResult.productionUrl,
+    };
+
+    if (deployResult.evidenceClass === "LIVE" && deployResult.productionUrl !== "NOT_VERIFIED") {
+      const probe = await productionHealthService.probeHttp(deployResult.productionUrl);
+      healthEvidence = {
+        httpStatus: probe.httpStatus,
+        healthStatus: probe.healthStatus,
+        tlsStatus: "NOT_VERIFIED",
+        homepageRender: "NOT_VERIFIED",
+        evidenceClass: probe.evidenceClass,
+        deploymentUrl: deployResult.productionUrl,
+        probeError: probe.error,
+      };
+    }
+
+    const updated = await productionReleaseRepository.updateRelease(release.id, {
+      status: "deployed",
+      providerDeploymentId: deployResult.providerDeploymentId,
+      productionUrl: deployResult.productionUrl,
       deployedAt: now,
-      dnsPlan,
       healthEvidence,
     });
 
@@ -242,8 +299,8 @@ export class ProductionReleaseService {
         agentName: "Operator",
         type: "lead_created" as any,
         level: "info",
-        title: `Production Release Approved: ${release.releaseNumber}`,
-        description: `Deployed production candidate to Vercel (${productionUrl}). Pre-cutover health check passed. Status: WAITING_DNS_APPROVAL.`,
+        title: `Production Release Deployed: ${release.releaseNumber}`,
+        description: `Provider recorded deployment ${deployResult.providerDeploymentId} (${deployResult.evidenceClass}). URL=${deployResult.productionUrl}. Health=${healthEvidence.healthStatus}.`,
       });
     } catch {}
 
@@ -253,45 +310,87 @@ export class ProductionReleaseService {
   async approveDNSCutover(params: {
     releaseId: string;
     domainName: string;
-  }): Promise<{ release: ProductionReleaseRecord; domain: ProjectDomainRecord }> {
+    actorRole?: ActorRole;
+    callerOrgId?: string;
+    callerProjectId?: string;
+    callerWorkspaceId?: string;
+  }): Promise<{ release: ProductionReleaseRecord; domain: ProjectDomainRecord; newlyApplied: boolean }> {
+    const killCheck = emergencyKillSwitch.isOperationAllowed("DEPLOYMENT");
+    if (!killCheck.allowed) {
+      throw new Error(`EMERGENCY_STOP_BLOCKED: ${killCheck.blockedReason}`);
+    }
+
+    const actorRole: ActorRole = params.actorRole ?? "FRONTEND_REQUEST";
+    const domainName = (params.domainName || "").trim();
+    if (!params.releaseId || !domainName) {
+      throw new Error("releaseId and domainName are required.");
+    }
+
     const release = await productionReleaseRepository.getReleaseById(params.releaseId);
     if (!release) throw new Error(`Release not found: ${params.releaseId}`);
+
+    const productionProject = await productionProjectRepository.getProject(release.projectId);
+    const opsProject = await projectRepository.getProjectById(release.projectId);
+    const targetOrgId =
+      productionProject?.organizationId ||
+      (typeof opsProject?.metadata?.organizationId === "string" ? opsProject.metadata.organizationId : undefined);
+    const targetWorkspaceId = productionProject?.workspaceId;
+
+    if (params.callerWorkspaceId && targetWorkspaceId && params.callerWorkspaceId !== targetWorkspaceId) {
+      throw new Error("UNAUTHORIZED_OPERATION: TENANT_BOUNDARY_VIOLATION");
+    }
+
+    const auth = privilegedActionFirewall.evaluate({
+      action: "PRODUCTION_DEPLOYMENT",
+      actor: "operator",
+      actorRole,
+      projectId: release.projectId,
+      callerProjectId: params.callerProjectId,
+      callerOrgId: params.callerOrgId,
+      targetOrgId,
+    });
+    if (!auth.allowed) {
+      throw new Error(`UNAUTHORIZED_OPERATION: ${auth.denialReason}`);
+    }
+
+    const existing = await productionReleaseRepository.getDomainByProject(release.projectId);
+    if (existing && existing.domain === domainName) {
+      return { release, domain: existing, newlyApplied: false };
+    }
+
+    const providerResult = await vercelDeploymentProvider.requestCustomDomain({ domain: domainName });
+    if (!providerResult.ok) {
+      throw new Error(providerResult.error || "DNS_PROVIDER_NOT_CONFIGURED: DNS cutover is NOT_SUPPORTED.");
+    }
 
     const now = new Date().toISOString();
     const domainRecord: ProjectDomainRecord = {
       id: `DOM-${Date.now().toString().slice(-4)}`,
       projectId: release.projectId,
-      domain: params.domainName,
+      domain: domainName,
       domainType: "subdomain",
-      provider: "manual",
-      ownershipStatus: "verified",
-      verificationStatus: "verified",
-      currentDnsSnapshot: [
-        { type: "MX", name: "@", value: "mail.apexlogistics.com", ttl: 3600 },
-        { type: "TXT", name: "@", value: "v=spf1 include:_spf.google.com ~all", ttl: 3600 },
-      ],
-      desiredDnsPlan: [
-        { type: "CNAME", name: "apex", value: "cname.vercel-dns.com", action: "create" },
-      ],
-      status: "active",
+      provider: providerResult.provider,
+      ownershipStatus: providerResult.ownershipStatus,
+      verificationStatus: providerResult.verificationStatus,
+      currentDnsSnapshot: [],
+      desiredDnsPlan: [{ type: "CNAME", name: domainName, value: "cname.vercel-dns.com", action: "create" }],
+      status: "waiting_approval",
       createdAt: now,
-      verifiedAt: now,
-      cutoverAt: now,
     };
 
     await productionReleaseRepository.createDomain(domainRecord);
 
     const updatedRelease = await productionReleaseRepository.updateRelease(release.id, {
-      status: "verifying",
-      cutoverAt: now,
-      verifiedAt: now,
+      status: "dns_updating",
       healthEvidence: {
-        ...release.healthEvidence,
-        customDomain: params.domainName,
-        customDomainHttp: 200,
-        customDomainTls: "VALID (Let's Encrypt / Vercel TLS Certificate)",
-        postCutoverBrowserHealth: "PASS",
-        contactFormSubmissionTest: "SUCCESS (Single verification test delivered to sales@apexlogistics.com)",
+        customDomain: domainName,
+        customDomainHttp: providerResult.httpStatus,
+        customDomainTls: providerResult.tlsStatus,
+        postCutoverBrowserHealth: providerResult.healthStatus,
+        evidenceClass: providerResult.evidenceClass,
+        dnsOwnership: providerResult.ownershipStatus,
+        dnsVerification: providerResult.verificationStatus,
+        cutoverRequestedAt: now,
       },
     });
 
@@ -300,12 +399,12 @@ export class ProductionReleaseService {
         agentName: "Operator",
         type: "lead_created" as any,
         level: "info",
-        title: `DNS Cutover Approved & Verified: ${params.domainName}`,
-        description: `Cutover ${params.domainName} to Vercel CNAME. Preserved MX/TXT records untouched. Public DNS & TLS verified. Status: VERIFYING.`,
+        title: `DNS Cutover Requested: ${domainName}`,
+        description: `Requested custom domain ${domainName} via ${providerResult.provider} (${providerResult.evidenceClass}). TLS/HTTP/health remain ${providerResult.tlsStatus}. Ownership=${providerResult.ownershipStatus}.`,
       });
     } catch {}
 
-    return { release: updatedRelease!, domain: domainRecord };
+    return { release: updatedRelease!, domain: domainRecord, newlyApplied: true };
   }
 
   async confirmProductionLive(releaseId: string, actorRole: ActorRole = "OPERATOR"): Promise<{ release: ProductionReleaseRecord; project: ProjectRecord }> {

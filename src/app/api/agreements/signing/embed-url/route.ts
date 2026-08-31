@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dropboxSignProvider } from "@/lib/services/agreements/providers/dropbox-sign.provider";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
 
 export async function GET(req: Request) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const { searchParams } = new URL(req.url);
     const signatureId = searchParams.get("signatureId");
     if (!signatureId) {

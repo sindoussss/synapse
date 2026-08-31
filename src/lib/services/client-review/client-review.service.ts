@@ -3,6 +3,7 @@ import { projectRepository, ProjectRecord } from "../../repositories/project.rep
 import { qaRepository } from "../../repositories/qa.repository";
 import { developerAgentService } from "../developer/developer-agent.service";
 import { activityRepository } from "../../repositories/activity.repository";
+import { emergencyKillSwitch } from "../security/emergency-kill-switch.service";
 import nodemailer from "nodemailer";
 import fs from "fs";
 import path from "path";
@@ -84,6 +85,11 @@ export class ClientReviewService {
     sessionId: string;
     simulateAccessBlocked?: boolean;
   }): Promise<ClientReviewSessionRecord> {
+    const killCheck = emergencyKillSwitch.isOperationAllowed("DEPLOYMENT");
+    if (!killCheck.allowed) {
+      throw new Error(`EMERGENCY_STOP_BLOCKED: ${killCheck.blockedReason}`);
+    }
+
     const session = await clientReviewRepository.getSessionById(params.sessionId);
     if (!session) throw new Error(`Review session not found: ${params.sessionId}`);
 

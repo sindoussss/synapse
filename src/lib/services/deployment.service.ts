@@ -5,6 +5,7 @@ import { deploymentRepository, DeploymentRecord } from "../repositories/deployme
 import { activityRepository } from "../repositories/activity.repository";
 import { approvalRepository } from "../repositories/approval.repository";
 import { vercelDeploymentProvider } from "../deployment/providers/vercel.provider";
+import { emergencyKillSwitch } from "./security/emergency-kill-switch.service";
 
 export class DeploymentService {
   async requestPreviewDeployment(redesignProjectId: string): Promise<{
@@ -74,6 +75,11 @@ export class DeploymentService {
   }
 
   async approveDeployment(deploymentId: string): Promise<DeploymentRecord> {
+    const killCheck = emergencyKillSwitch.isOperationAllowed("DEPLOYMENT");
+    if (!killCheck.allowed) {
+      throw new Error(`EMERGENCY_STOP_BLOCKED: ${killCheck.blockedReason}`);
+    }
+
     const deployment = await deploymentRepository.getById(deploymentId);
     if (!deployment) {
       throw new Error(`Deployment record ${deploymentId} not found.`);

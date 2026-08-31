@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { negotiationIntelligenceService } from "@/lib/services/negotiation/negotiation-intelligence.service";
 import { emailMessageRepository } from "@/lib/repositories/message.repository";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
 
 export async function POST(req: NextRequest) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const body = await req.json();
     const { messageId, text, opportunityId, sender } = body;
 

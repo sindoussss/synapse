@@ -20,6 +20,51 @@ export interface ProductionHealthEvaluation {
 }
 
 export class ProductionHealthService {
+  /**
+   * Independent HTTP probe. Does not invent 200/HEALTHY.
+   * Timeouts and network errors stay NOT_VERIFIED.
+   */
+  async probeHttp(url: string): Promise<{
+    url: string;
+    httpStatus: number | "NOT_VERIFIED";
+    healthStatus: "HEALTHY" | "FAILED" | "NOT_VERIFIED";
+    evidenceClass: "LIVE" | "CONTROLLED_TEST";
+    error?: string;
+  }> {
+    if (!url || url === "NOT_VERIFIED" || !/^https?:\/\//i.test(url)) {
+      return {
+        url: url || "NOT_VERIFIED",
+        httpStatus: "NOT_VERIFIED",
+        healthStatus: "NOT_VERIFIED",
+        evidenceClass: "LIVE",
+        error: "NO_PROBE_URL",
+      };
+    }
+
+    try {
+      const res = await fetch(url, {
+        method: "GET",
+        redirect: "follow",
+        signal: AbortSignal.timeout(8000),
+      });
+      return {
+        url,
+        httpStatus: res.status,
+        healthStatus: res.status === 200 ? "HEALTHY" : "FAILED",
+        evidenceClass: "LIVE",
+      };
+    } catch (err: any) {
+      const timedOut = err?.name === "TimeoutError" || err?.name === "AbortError" || /timeout/i.test(String(err?.message));
+      return {
+        url,
+        httpStatus: "NOT_VERIFIED",
+        healthStatus: "NOT_VERIFIED",
+        evidenceClass: "LIVE",
+        error: timedOut ? "PROBE_TIMEOUT" : "PROBE_FAILED",
+      };
+    }
+  }
+
   evaluateHealth(verif: PostDeploymentVerificationRecord, projectId: string): ProductionHealthEvaluation {
     const blockers: string[] = [];
     const evidenceIds: string[] = [];

@@ -3,7 +3,7 @@ import { invoiceRepository, InvoiceRecord } from "../../repositories/invoice.rep
 import { activityRepository } from "../../repositories/activity.repository";
 import { payPalProvider, PayPalEnvironment } from "./paypal.provider";
 import { gmailEmailProvider } from "../../email/providers/gmail.provider";
-import { sourceDeliveryService, ClientDeliveryResponse } from "../delivery/source-delivery.service";
+import { ClientDeliveryResponse } from "../delivery/source-delivery.service";
 import { sourceDeliveryRepository } from "../../repositories/source-delivery.repository";
 import { emergencyKillSwitch } from "../security/emergency-kill-switch.service";
 import { privilegedActionFirewall } from "../security/privileged-action-firewall.service";
@@ -125,25 +125,20 @@ export class PayPalService {
 
   async reconcilePayPalCapture(params: {
     orderId: string;
-    captureId: string;
+    captureId?: string;
     eventId?: string;
-    amountMinorUnits: number;
-    currency: string;
+    /** Ignored. Amount is taken from PayPal. Kept so existing callers still typecheck. */
+    amountMinorUnits?: number;
+    /** Ignored. Currency is taken from PayPal. */
+    currency?: string;
     providerConfirmedAt?: string;
     environment?: PayPalEnvironment;
-    deliveryContext?: {
-      projectId: string;
-      organizationId: string;
-      workspaceId: string;
-      clientId: string;
-      releaseCandidateId: string;
-      snapshotId: string;
-      sourceHash: string;
-      manifestHash: string;
-      files: Record<string, string>;
-      clientApprovalExists: boolean;
-      operatorApprovalExists: boolean;
-    };
+    /**
+     * Ignored. Caller-supplied delivery unlock (project, files, approval flags)
+     * must not mutate delivery eligibility. Authorize delivery through
+     * sourceDeliveryService with stored evidence after payment is verified.
+     */
+    deliveryContext?: unknown;
   }): Promise<{
     transaction: PaymentTransactionRecord;
     invoice: InvoiceRecord;
@@ -154,6 +149,10 @@ export class PayPalService {
     const killCheck = emergencyKillSwitch.isOperationAllowed("PAYMENT_MUTATION");
     if (!killCheck.allowed) {
       throw new Error(`EMERGENCY_STOP_BLOCKED: ${killCheck.blockedReason}`);
+    }
+
+    if (!params.orderId) {
+      throw new Error("PAYMENT_UNVERIFIED: PayPal order ID is required.");
     }
 
     const req = await paymentRequestRepository.getPaymentRequestByOrderId(params.orderId);
@@ -168,16 +167,7 @@ export class PayPalService {
       throw new Error(`PAYMENT_ENVIRONMENT_MISMATCH: PayPal transaction environment '${params.environment}' does not match invoice requirement '${reqEnv}'.`);
     }
 
-    // Capture ID Deduplication & Idempotency Check (Handles Webhook/Browser Race)
-    if (params.captureId) {
-      const allTx = await paymentRequestRepository.getAllTransactions();
-      const existingCap = allTx.find((t) => t.providerTransactionId === params.captureId);
-      if (existingCap) {
-        return { transaction: existingCap, invoice };
-      }
-    }
-
-    // Event Idempotency Check (Handles Webhook Replay)
+    // Event Idempotency Check (Handles Webhook Replay) — before provider I/O
     if (params.eventId) {
       const existingTx = await paymentRequestRepository.getTransactionByEventId(params.eventId);
       if (existingTx) {
@@ -185,15 +175,69 @@ export class PayPalService {
       }
     }
 
-    // Currency Safety
-    if (params.currency.toUpperCase() !== invoice.currency.toUpperCase()) {
+    // Authoritative PayPal lookup. Caller amount/currency/capture are not evidence.
+    let providerOrder: Awaited<ReturnType<typeof payPalProvider.getPaymentStatus>>;
+    try {
+      providerOrder = await payPalProvider.getPaymentStatus(params.orderId, reqEnv);
+    } catch (e: any) {
       throw new Error(
-        `PAYMENT_CURRENCY_MISMATCH: PayPal payment currency (${params.currency}) does not match invoice currency (${invoice.currency}). Reconciliation blocked.`
+        `PAYMENT_UNVERIFIED: Unable to obtain authoritative PayPal order state for '${params.orderId}'. ${e?.message || e}`
+      );
+    }
+
+    const orderCompleted = providerOrder.status === "COMPLETED" || providerOrder.status === "CAPTURED";
+    if (!orderCompleted || !providerOrder.captureId) {
+      throw new Error(
+        `PAYMENT_UNVERIFIED: PayPal order '${params.orderId}' is not a completed capture (status='${providerOrder.status}').`
+      );
+    }
+
+    if (params.captureId && params.captureId !== providerOrder.captureId) {
+      throw new Error(
+        `PAYMENT_CAPTURE_MISMATCH: Caller capture '${params.captureId}' does not match PayPal capture '${providerOrder.captureId}'.`
+      );
+    }
+
+    let amountMinorUnits = providerOrder.amountMinorUnits;
+    let currency = providerOrder.currency;
+    const captureId = providerOrder.captureId;
+    let providerConfirmedAt = providerOrder.completedAt;
+
+    try {
+      const capture = await payPalProvider.getTransaction(captureId, reqEnv);
+      if (capture.status !== "COMPLETED") {
+        throw new Error(
+          `PAYMENT_UNVERIFIED: PayPal capture '${captureId}' status is '${capture.status}'.`
+        );
+      }
+      amountMinorUnits = capture.amountMinorUnits;
+      currency = capture.currency;
+      providerConfirmedAt = capture.createTime || providerConfirmedAt;
+    } catch (e: any) {
+      if (typeof e?.message === "string" && e.message.startsWith("PAYMENT_UNVERIFIED")) {
+        throw e;
+      }
+      throw new Error(
+        `PAYMENT_UNVERIFIED: Unable to obtain authoritative PayPal capture '${captureId}'. ${e?.message || e}`
+      );
+    }
+
+    // Capture ID Deduplication & Idempotency Check (Handles Webhook/Browser Race)
+    const allTx = await paymentRequestRepository.getAllTransactions();
+    const existingCap = allTx.find((t) => t.providerTransactionId === captureId);
+    if (existingCap) {
+      return { transaction: existingCap, invoice };
+    }
+
+    // Currency Safety — provider currency vs invoice, never caller currency
+    if (currency.toUpperCase() !== invoice.currency.toUpperCase()) {
+      throw new Error(
+        `PAYMENT_CURRENCY_MISMATCH: PayPal payment currency (${currency}) does not match invoice currency (${invoice.currency}). Reconciliation blocked.`
       );
     }
 
     // Overpayment Protection / Review Required Flag
-    if (params.amountMinorUnits > invoice.balanceDue) {
+    if (amountMinorUnits > invoice.balanceDue) {
       return {
         transaction: {
           id: `PAY-TX-FLAGGED-${Date.now().toString().slice(-4)}`,
@@ -201,16 +245,16 @@ export class PayPalService {
           invoiceId: invoice.id,
           provider: "paypal",
           providerOrderId: params.orderId,
-          currency: params.currency,
-          amountMinorUnits: params.amountMinorUnits,
+          currency,
+          amountMinorUnits,
           status: "pending",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          metadata: { flagged: true, reason: "PAYMENT_AMOUNT_REVIEW_REQUIRED" },
+          metadata: { flagged: true, reason: "PAYMENT_AMOUNT_REVIEW_REQUIRED", captureId, source: "paypal_provider" },
         },
         invoice,
         requiresReview: true,
-        reviewReason: `PAYMENT_AMOUNT_REVIEW_REQUIRED: Captured amount (${params.amountMinorUnits}) exceeds remaining balance (${invoice.balanceDue}). Silent unlock prevented.`,
+        reviewReason: `PAYMENT_AMOUNT_REVIEW_REQUIRED: Captured amount (${amountMinorUnits}) exceeds remaining balance (${invoice.balanceDue}). Silent unlock prevented.`,
       };
     }
 
@@ -223,14 +267,14 @@ export class PayPalService {
       invoiceId: invoice.id,
       provider: "paypal",
       providerOrderId: params.orderId,
-      providerTransactionId: params.captureId,
-      providerEventId: params.eventId || `MANUAL-${txId}`,
-      currency: params.currency,
-      amountMinorUnits: params.amountMinorUnits,
+      providerTransactionId: captureId,
+      providerEventId: params.eventId || `PAYPAL-${captureId}`,
+      currency,
+      amountMinorUnits,
       status: "succeeded",
-      providerCreatedAt: params.providerConfirmedAt || now,
-      providerConfirmedAt: params.providerConfirmedAt || now,
-      metadata: { orderId: params.orderId, captureId: params.captureId, environment: reqEnv },
+      providerCreatedAt: providerConfirmedAt || now,
+      providerConfirmedAt: providerConfirmedAt || now,
+      metadata: { orderId: params.orderId, captureId, environment: reqEnv, source: "paypal_provider" },
       createdAt: now,
       updatedAt: now,
     };
@@ -243,8 +287,8 @@ export class PayPalService {
       completedAt: now,
     });
 
-    // Deterministic Invoice Balance Update
-    const newAmountPaid = invoice.amountPaid + params.amountMinorUnits;
+    // Deterministic Invoice Balance Update from PayPal amount
+    const newAmountPaid = invoice.amountPaid + amountMinorUnits;
     const newBalanceDue = Math.max(0, invoice.totalAmount - newAmountPaid);
     const newStatus = newBalanceDue === 0 ? "paid" : "partially_paid";
 
@@ -259,42 +303,21 @@ export class PayPalService {
       await activityRepository.add({
         agentName: "System",
         type: "lead_created" as any,
+        title: `PayPal Payment Reconciled (${reqEnv.toUpperCase()}): ${captureId}`,
+        description: `Reconciled ${currency} ${(amountMinorUnits / 100).toLocaleString()} via PayPal Capture ${captureId}. Invoice balance: ${invoice.currency} ${(newBalanceDue / 100).toLocaleString()} (Status: ${newStatus}).`,
         level: "info",
-        title: `PayPal Payment Reconciled (${reqEnv.toUpperCase()}): ${params.captureId}`,
-        description: `Reconciled ${params.currency} ${(params.amountMinorUnits / 100).toLocaleString()} via PayPal Capture ${params.captureId}. Invoice balance: ${invoice.currency} ${(newBalanceDue / 100).toLocaleString()} (Status: ${newStatus}).`,
       });
     } catch {}
 
-    // AUTOMATIC PHASE 40 SOURCE DELIVERY TRIGGER IF FULLY PAID
-    let deliveryResponse: ClientDeliveryResponse | undefined;
-    if (newStatus === "paid" && params.deliveryContext) {
-      deliveryResponse = await sourceDeliveryService.processPaymentAndAuthorizeDelivery({
-        projectId: params.deliveryContext.projectId,
-        organizationId: params.deliveryContext.organizationId,
-        workspaceId: params.deliveryContext.workspaceId,
-        clientId: params.deliveryContext.clientId,
-        invoiceId: invoice.id,
-        paymentId: savedTx.id,
-        releaseCandidateId: params.deliveryContext.releaseCandidateId,
-        snapshotId: params.deliveryContext.snapshotId,
-        sourceHash: params.deliveryContext.sourceHash,
-        manifestHash: params.deliveryContext.manifestHash,
-        expectedAmountMinor: invoice.totalAmount,
-        paidAmountMinor: newAmountPaid,
-        currency: invoice.currency,
-        files: params.deliveryContext.files,
-        clientApprovalExists: params.deliveryContext.clientApprovalExists,
-        operatorApprovalExists: params.deliveryContext.operatorApprovalExists,
-      });
-    }
-
-    return { transaction: savedTx, invoice: updatedInvoice!, deliveryResponse };
+    // Delivery is not authorized from this path. Caller deliveryContext is not evidence.
+    return { transaction: savedTx, invoice: updatedInvoice! };
   }
 
   async handleRefundWebhook(params: {
     captureId: string;
     refundId: string;
     projectId?: string;
+    paymentRequestId?: string;
   }): Promise<{ status: "REFUNDED"; deliveryRevoked: boolean }> {
     const killCheck = emergencyKillSwitch.isOperationAllowed("PAYMENT_MUTATION");
     if (!killCheck.allowed) {
@@ -302,24 +325,54 @@ export class PayPalService {
     }
 
     const allTx = await paymentRequestRepository.getAllTransactions();
-    const tx = allTx.find((t) => t.providerTransactionId === params.captureId);
-    if (tx) {
-      tx.status = "refunded";
-      tx.updatedAt = new Date().toISOString();
-      await paymentRequestRepository.createPaymentTransaction(tx);
-    }
+    const existingComp = allTx.find((t) => t.metadata?.refundId === params.refundId);
+    const original = existingComp
+      ? allTx.find((t) => t.id === existingComp.metadata?.originalTransactionId) || this.findOriginalCapture(allTx, params)
+      : this.findOriginalCapture(allTx, params);
 
-    let deliveryRevoked = false;
-    if (params.projectId) {
-      const deliv = await sourceDeliveryRepository.getDeliveryByProject(params.projectId);
-      if (deliv) {
-        deliv.status = "REVOKED";
-        deliv.invalidatedAt = new Date().toISOString();
-        deliv.invalidationReason = `PAYMENT_REFUNDED: PayPal Refund ${params.refundId} processed. Client download access revoked.`;
-        await sourceDeliveryRepository.saveDelivery(deliv);
-        deliveryRevoked = true;
+    if (!existingComp && original) {
+      const now = new Date().toISOString();
+      await paymentRequestRepository.createPaymentTransaction({
+        id: `PAY-TX-REF-${Date.now().toString().slice(-4)}`,
+        paymentRequestId: original.paymentRequestId,
+        invoiceId: original.invoiceId,
+        provider: "paypal",
+        providerOrderId: original.providerOrderId,
+        providerTransactionId: original.providerTransactionId,
+        providerEventId: `REFUND-${params.refundId}`,
+        currency: original.currency,
+        amountMinorUnits: original.amountMinorUnits,
+        status: "refunded",
+        createdAt: now,
+        updatedAt: now,
+        metadata: {
+          role: "COMPENSATING",
+          refundId: params.refundId,
+          originalTransactionId: original.id,
+          captureId: original.providerTransactionId,
+        },
+      });
+
+      const invoice = await invoiceRepository.getInvoiceById(original.invoiceId);
+      if (invoice && invoice.amountPaid > 0) {
+        const newAmountPaid = Math.max(0, invoice.amountPaid - original.amountMinorUnits);
+        const newBalanceDue = Math.min(invoice.totalAmount, invoice.totalAmount - newAmountPaid);
+        const newStatus = newAmountPaid === 0 ? "sent" : "partially_paid";
+        await invoiceRepository.updateInvoice(invoice.id, {
+          amountPaid: newAmountPaid,
+          balanceDue: newBalanceDue,
+          status: newStatus,
+        });
       }
     }
+
+    const invoiceId = original?.invoiceId || existingComp?.invoiceId;
+    const deliveryRevoked = await this.revokeDeliveriesForFinancialEvent({
+      invoiceId,
+      projectId: params.projectId,
+      reason: `PAYMENT_REFUNDED: PayPal Refund ${params.refundId} processed. Client download access revoked.`,
+      status: "REVOKED",
+    });
 
     return { status: "REFUNDED", deliveryRevoked };
   }
@@ -328,33 +381,143 @@ export class PayPalService {
     captureId: string;
     disputeId: string;
     projectId?: string;
+    paymentRequestId?: string;
+    eventKind?: "DISPUTE" | "REVERSAL";
   }): Promise<{ status: "DISPUTED"; deliveryRevoked: boolean }> {
     const killCheck = emergencyKillSwitch.isOperationAllowed("PAYMENT_MUTATION");
     if (!killCheck.allowed) {
       throw new Error(`EMERGENCY_STOP_BLOCKED: ${killCheck.blockedReason}`);
     }
 
+    const kind = params.eventKind || "DISPUTE";
     const allTx = await paymentRequestRepository.getAllTransactions();
-    const tx = allTx.find((t) => t.providerTransactionId === params.captureId);
-    if (tx) {
-      tx.status = "disputed";
-      tx.updatedAt = new Date().toISOString();
-      await paymentRequestRepository.createPaymentTransaction(tx);
-    }
+    const existingComp = allTx.find((t) => t.metadata?.disputeId === params.disputeId);
+    const original = existingComp
+      ? allTx.find((t) => t.id === existingComp.metadata?.originalTransactionId) || this.findOriginalCapture(allTx, params)
+      : this.findOriginalCapture(allTx, params);
 
-    let deliveryRevoked = false;
-    if (params.projectId) {
-      const deliv = await sourceDeliveryRepository.getDeliveryByProject(params.projectId);
-      if (deliv) {
-        deliv.status = "DELIVERY_INVALIDATED";
-        deliv.invalidatedAt = new Date().toISOString();
-        deliv.invalidationReason = `PAYMENT_REVERSED: PayPal Dispute/Reversal ${params.disputeId} received. Delivery invalidated.`;
-        await sourceDeliveryRepository.saveDelivery(deliv);
-        deliveryRevoked = true;
+    if (!existingComp && original) {
+      const now = new Date().toISOString();
+      await paymentRequestRepository.createPaymentTransaction({
+        id: `PAY-TX-DSP-${Date.now().toString().slice(-4)}`,
+        paymentRequestId: original.paymentRequestId,
+        invoiceId: original.invoiceId,
+        provider: "paypal",
+        providerOrderId: original.providerOrderId,
+        providerTransactionId: original.providerTransactionId,
+        providerEventId: `${kind}-${params.disputeId}`,
+        currency: original.currency,
+        amountMinorUnits: original.amountMinorUnits,
+        status: kind === "REVERSAL" ? "refunded" : "disputed",
+        createdAt: now,
+        updatedAt: now,
+        metadata: {
+          role: "COMPENSATING",
+          disputeId: params.disputeId,
+          eventKind: kind,
+          originalTransactionId: original.id,
+          captureId: original.providerTransactionId,
+        },
+      });
+
+      if (kind === "REVERSAL") {
+        const invoice = await invoiceRepository.getInvoiceById(original.invoiceId);
+        if (invoice && invoice.amountPaid > 0) {
+          const newAmountPaid = Math.max(0, invoice.amountPaid - original.amountMinorUnits);
+          const newBalanceDue = Math.min(invoice.totalAmount, invoice.totalAmount - newAmountPaid);
+          const newStatus = newAmountPaid === 0 ? "sent" : "partially_paid";
+          await invoiceRepository.updateInvoice(invoice.id, {
+            amountPaid: newAmountPaid,
+            balanceDue: newBalanceDue,
+            status: newStatus,
+          });
+        }
       }
     }
 
+    const invoiceId = original?.invoiceId || existingComp?.invoiceId;
+    const deliveryRevoked = await this.revokeDeliveriesForFinancialEvent({
+      invoiceId,
+      projectId: params.projectId,
+      reason:
+        kind === "REVERSAL"
+          ? `PAYMENT_REVERSED: PayPal capture reversal ${params.disputeId} received. Delivery invalidated.`
+          : `PAYMENT_DISPUTED: PayPal dispute ${params.disputeId} received. Delivery invalidated.`,
+      status: "DELIVERY_INVALIDATED",
+    });
+
     return { status: "DISPUTED", deliveryRevoked };
+  }
+
+  private findOriginalCapture(
+    allTx: PaymentTransactionRecord[],
+    params: { captureId: string; paymentRequestId?: string }
+  ): PaymentTransactionRecord | undefined {
+    const byCapture = allTx.find(
+      (t) => t.providerTransactionId === params.captureId && t.metadata?.role !== "COMPENSATING" && t.status === "succeeded"
+    );
+    if (byCapture) return byCapture;
+
+    if (params.paymentRequestId) {
+      const byReq = allTx.find(
+        (t) => t.paymentRequestId === params.paymentRequestId && t.metadata?.role !== "COMPENSATING" && t.status === "succeeded"
+      );
+      if (byReq) return byReq;
+    }
+
+    return undefined;
+  }
+
+  private async revokeDeliveriesForFinancialEvent(params: {
+    invoiceId?: string;
+    projectId?: string;
+    reason: string;
+    status: "REVOKED" | "DELIVERY_INVALIDATED";
+  }): Promise<boolean> {
+    const now = new Date().toISOString();
+    let revoked = false;
+    const seen = new Set<string>();
+
+    const candidates = params.invoiceId
+      ? await sourceDeliveryRepository.listDeliveriesByInvoice(params.invoiceId)
+      : [];
+
+    if (params.projectId) {
+      const byProject = await sourceDeliveryRepository.getDeliveryByProject(params.projectId);
+      if (byProject) candidates.push(byProject);
+    }
+
+    for (const deliv of candidates) {
+      if (seen.has(deliv.deliveryId)) continue;
+      seen.add(deliv.deliveryId);
+      if (
+        deliv.status === "DELIVERY_AUTHORIZED" ||
+        deliv.status === "DOWNLOADED" ||
+        deliv.status === "REVOKED" ||
+        deliv.status === "DELIVERY_INVALIDATED"
+      ) {
+        if (deliv.status !== params.status) {
+          deliv.status = params.status;
+          deliv.invalidatedAt = now;
+          deliv.invalidationReason = params.reason;
+          await sourceDeliveryRepository.saveDelivery(deliv);
+          await sourceDeliveryRepository.recordAudit({
+            auditId: `AUDIT-${Date.now().toString().slice(-4)}`,
+            timestamp: now,
+            actor: "PayPal Webhook",
+            projectId: deliv.projectId,
+            clientId: deliv.clientId,
+            deliveryId: deliv.deliveryId,
+            action: params.status === "REVOKED" ? "DELIVERY_REVOKED" : "DELIVERY_INVALIDATED",
+            result: "SUCCESS",
+            reason: params.reason,
+          });
+        }
+        revoked = true;
+      }
+    }
+
+    return revoked;
   }
 
   async sendPaymentLinkEmail(params: { paymentRequestId: string; recipientEmail?: string }): Promise<{ success: boolean; messageId?: string }> {

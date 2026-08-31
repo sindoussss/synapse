@@ -75,6 +75,7 @@ export class PrivilegedActionFirewall {
     actor: string;
     actorRole: ActorRole;
     projectId?: string;
+    callerProjectId?: string;
     callerOrgId?: string;
     targetOrgId?: string;
     snapshotMatch?: boolean;
@@ -109,6 +110,17 @@ export class PrivilegedActionFirewall {
         actor: params.actor,
         actorRole: params.actorRole,
         denialReason: "TENANT_BOUNDARY_VIOLATION",
+        auditRequired: true,
+      };
+    }
+
+    if (params.callerProjectId && params.projectId && params.callerProjectId !== params.projectId) {
+      return {
+        allowed: false,
+        action: params.action,
+        actor: params.actor,
+        actorRole: params.actorRole,
+        denialReason: "PROJECT_BOUNDARY_VIOLATION",
         auditRequired: true,
       };
     }

@@ -24,6 +24,7 @@ export interface DeploymentMetadata {
   leadId?: string;
   redesignProjectId: string;
   disclaimer?: string;
+  target?: "preview" | "production";
 }
 
 export interface DeploymentResult {

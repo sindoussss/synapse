@@ -2,9 +2,16 @@ import { handoverRepository, HandoverPackageRecord, HandoverItemRecord } from ".
 import { productionReleaseRepository } from "../../repositories/production-release.repository";
 import { projectRepository, ProjectRecord } from "../../repositories/project.repository";
 import { agreementRepository } from "../../repositories/agreement.repository";
-import { invoiceRepository, InvoiceRecord, PaymentRecord } from "../../repositories/invoice.repository";
+import { invoiceRepository, InvoiceRecord } from "../../repositories/invoice.repository";
 import { qaRepository } from "../../repositories/qa.repository";
 import { activityRepository } from "../../repositories/activity.repository";
+import { paymentRequestRepository } from "../../repositories/payment-request.repository";
+import { billingRepository } from "../../repositories/billing.repository";
+import { payPalService } from "../payments/paypal.service";
+import { paymentReconciliationService } from "../billing/payment-reconciliation.service";
+import { emergencyKillSwitch } from "../security/emergency-kill-switch.service";
+import { privilegedActionFirewall, ActorRole } from "../security/privileged-action-firewall.service";
+import type { PayPalEnvironment } from "../payments/paypal.provider";
 import nodemailer from "nodemailer";
 import fs from "fs";
 import path from "path";
@@ -286,71 +293,143 @@ export class HandoverService {
     return created;
   }
 
+  /**
+   * Final-milestone reconcile. Caller amount/currency/capture-status are not evidence.
+   * Financial mutation happens only inside payPalService.reconcilePayPalCapture.
+   * Delivery is never authorized from this path.
+   */
   async reconcileFinalPayment(params: {
-    invoiceId: string;
-    amountPaidMinor: number;
-    providerTransactionId: string;
+    orderId?: string;
+    captureId?: string;
+    invoiceId?: string;
+    projectId?: string;
+    clientId?: string;
+    environment?: PayPalEnvironment;
+    actorRole?: ActorRole;
+    /** Ignored. Not financial evidence. Kept so existing callers still typecheck. */
+    amountPaidMinor?: number;
+    /** Ignored. Treated as captureId only when captureId is absent; never as amount evidence. */
+    providerTransactionId?: string;
     isDuplicateReplay?: boolean;
-  }): Promise<{ invoice: InvoiceRecord; remainingReceivableMinor: number; newlyReconciled: boolean }> {
-    const invoice = await invoiceRepository.getInvoiceById(params.invoiceId);
-    if (!invoice) throw new Error(`Invoice not found: ${params.invoiceId}`);
-
-    // Check if this provider capture reference was already processed (Idempotency)
-    const existingPayments = await invoiceRepository.getPaymentsByInvoice(invoice.id);
-    const existingCapture = existingPayments.find((p) => p.paymentReference === params.providerTransactionId);
-
-    if (existingCapture) {
-      // Idempotent duplicate replay - 0 financial mutation
-      const invoices = await invoiceRepository.getInvoicesByOpportunity(invoice.opportunityId);
-      const totalPaidMinor = invoices.reduce((acc, inv) => acc + (inv.amountPaid || 0), 0);
-      const remainingReceivableMinor = Math.max(0, 8800000 - totalPaidMinor);
-      return { invoice, remainingReceivableMinor, newlyReconciled: false };
+  }): Promise<{
+    invoice: InvoiceRecord;
+    remainingReceivableMinor: number;
+    newlyReconciled: boolean;
+    requiresReview?: boolean;
+    reviewReason?: string;
+  }> {
+    const killCheck = emergencyKillSwitch.isOperationAllowed("PAYMENT_MUTATION");
+    if (!killCheck.allowed) {
+      throw new Error(`EMERGENCY_STOP_BLOCKED: ${killCheck.blockedReason}`);
     }
 
-    const paymentRecord: PaymentRecord = {
-      id: `PAY-REC-${Date.now().toString().slice(-4)}`,
-      invoiceId: invoice.id,
-      opportunityId: invoice.opportunityId,
-      agreementId: invoice.agreementId,
-      amount: params.amountPaidMinor,
-      currency: invoice.currency,
-      paymentMethod: "paypal",
-      paymentReference: params.providerTransactionId,
-      paymentDate: new Date().toISOString(),
-      status: "verified",
-      recordedBy: "operator",
-      recordedAt: new Date().toISOString(),
-      verifiedBy: "operator",
-      verifiedAt: new Date().toISOString(),
-      notes: "Authenticated final milestone settlement via PayPal API.",
-    };
+    const actorRole: ActorRole = params.actorRole || "OPERATOR";
+    const auth = privilegedActionFirewall.evaluate({
+      action: "PAYMENT_MUTATION",
+      actor: "operator",
+      actorRole,
+    });
+    if (!auth.allowed) {
+      throw new Error(`UNAUTHORIZED_OPERATION: ${auth.denialReason}`);
+    }
 
-    await invoiceRepository.createPaymentRecord(paymentRecord);
+    const captureId = (params.captureId || params.providerTransactionId || "").trim() || undefined;
+    let orderId = (params.orderId || "").trim();
 
-    const now = new Date().toISOString();
-    const updatedInvoice = await invoiceRepository.updateInvoice(invoice.id, {
-      status: "paid",
-      amountPaid: params.amountPaidMinor,
-      balanceDue: 0,
-      paidAt: now,
+    if (!orderId && params.invoiceId) {
+      const reqs = await paymentRequestRepository.getPaymentRequestsByInvoice(params.invoiceId);
+      const withOrder = reqs.filter((r) => r.providerRequestId);
+      const active =
+        withOrder.find((r) => r.status === "active" || r.status === "approved" || r.status === "completed") ||
+        withOrder[0];
+      if (active?.providerRequestId) orderId = active.providerRequestId;
+    }
+
+    if (!orderId) {
+      throw new Error("PAYMENT_UNVERIFIED: PayPal order ID is required. Caller amount/capture are not evidence.");
+    }
+
+    const paymentReq = await paymentRequestRepository.getPaymentRequestByOrderId(orderId);
+    if (!paymentReq) {
+      throw new Error(`PAYMENT_UNVERIFIED: Payment Request not found for PayPal Order: ${orderId}`);
+    }
+
+    if (params.invoiceId && params.invoiceId !== paymentReq.invoiceId) {
+      throw new Error(
+        `PAYMENT_INVOICE_MISMATCH: Caller invoice '${params.invoiceId}' does not match payment request invoice '${paymentReq.invoiceId}'.`
+      );
+    }
+
+    const invoice = await invoiceRepository.getInvoiceById(paymentReq.invoiceId);
+    if (!invoice) throw new Error(`Invoice not found: ${paymentReq.invoiceId}`);
+
+    const storedProject = await projectRepository.getProjectByOpportunityId(invoice.opportunityId);
+    if (params.projectId) {
+      if (!storedProject || storedProject.id !== params.projectId) {
+        throw new Error(
+          `PROJECT_CLIENT_MISMATCH: Caller project '${params.projectId}' is not bound to invoice '${invoice.id}'.`
+        );
+      }
+    }
+    if (params.clientId && params.clientId !== invoice.leadId) {
+      throw new Error(
+        `PROJECT_CLIENT_MISMATCH: Caller client '${params.clientId}' is not bound to invoice '${invoice.id}'.`
+      );
+    }
+
+    const amountPaidBefore = invoice.amountPaid || 0;
+    const recon = await payPalService.reconcilePayPalCapture({
+      orderId,
+      captureId,
+      environment: params.environment,
     });
 
-    const invoices = await invoiceRepository.getInvoicesByOpportunity(invoice.opportunityId);
-    const totalPaidMinor = invoices.reduce((acc, inv) => acc + (inv.amountPaid || 0), 0);
-    const totalContractMinor = 8800000;
-    const remainingReceivableMinor = Math.max(0, totalContractMinor - totalPaidMinor);
+    const remainingReceivableMinor = await this.remainingReceivableForOpportunity(recon.invoice.opportunityId);
 
-    try {
-      await activityRepository.add({
-        agentName: "Operator",
-        type: "lead_created" as any,
-        level: "info",
-        title: `Final Payment Reconciled: ${invoice.invoiceNumber}`,
-        description: `Reconciled final payment of PHP ${(params.amountPaidMinor / 100).toLocaleString()} (Provider ID: ${params.providerTransactionId}). Contract Receivable: PHP ${(remainingReceivableMinor / 100).toLocaleString()}.`,
-      });
-    } catch {}
+    if (recon.requiresReview) {
+      return {
+        invoice: recon.invoice,
+        remainingReceivableMinor,
+        newlyReconciled: false,
+        requiresReview: true,
+        reviewReason: recon.reviewReason,
+      };
+    }
 
-    return { invoice: updatedInvoice!, remainingReceivableMinor, newlyReconciled: true };
+    const newlyReconciled =
+      recon.transaction.status === "succeeded" && (recon.invoice.amountPaid || 0) !== amountPaidBefore;
+
+    if (newlyReconciled && recon.transaction.providerTransactionId) {
+      const billingInvoice = billingRepository.getInvoice(recon.invoice.id);
+      if (billingInvoice) {
+        const reqEnv = (recon.transaction.metadata?.environment as string) || "sandbox";
+        paymentReconciliationService.reconcilePayment({
+          invoiceId: billingInvoice.invoiceId,
+          organizationId: billingInvoice.organizationId,
+          projectId: billingInvoice.projectId,
+          clientId: billingInvoice.clientId,
+          provider: "PAYPAL",
+          providerTransactionId: recon.transaction.providerTransactionId,
+          amountMinor: recon.transaction.amountMinorUnits,
+          currency: recon.transaction.currency,
+          environment: reqEnv === "live" ? "LIVE" : "SANDBOX",
+          sourceEventId: recon.transaction.providerEventId,
+        });
+      }
+    }
+
+    return {
+      invoice: recon.invoice,
+      remainingReceivableMinor,
+      newlyReconciled,
+    };
+  }
+
+  private async remainingReceivableForOpportunity(opportunityId: string): Promise<number> {
+    const invoices = await invoiceRepository.getInvoicesByOpportunity(opportunityId);
+    const totalMinor = invoices.reduce((acc, inv) => acc + (inv.totalAmount || 0), 0);
+    const paidMinor = invoices.reduce((acc, inv) => acc + (inv.amountPaid || 0), 0);
+    return Math.max(0, totalMinor - paidMinor);
   }
 
   async evaluateCompletionReadiness(projectId: string): Promise<{ readyToClose: boolean; checklist: Record<string, boolean>; blockers: string[] }> {

@@ -28,32 +28,44 @@ export class CodeGenerator {
 
     // 2. Generate Next.js / Tailwind TSX Concept Code
     const prompt = `
-You are the expert Frontend Developer Agent of Synapse Ops.
-Generate a complete, modern, interactive, production-ready React component (Next.js + Tailwind CSS) for this website redesign concept.
+You are the elite Principal Frontend Software Engineer & Minimalist Design Architect of Synapse.
+Generate a complete, production-ready, ultra-clean React component (Next.js 16 + React 19 + Tailwind CSS) for this website concept.
 
 CLIENT & PROJECT SPECS:
 - Company Name: "${lead.company}"
 - Industry: "${lead.industry}"
 - Location: "${lead.location || "Philippines"}"
 - Target Website: "${lead.website}"
-- Primary Redesign Goal: "${brief.primaryGoal}"
+- Primary Goal: "${brief.primaryGoal}"
 - Design Direction: "${brief.designDirection}"
 - Deficiencies To Fix: ${brief.improve.join(", ")}
 - Strengths To Preserve: ${brief.preserve.join(", ")}
 - Key Page Sections: ${brief.pageSections.join(", ")}
 
-TECHNICAL REQUIREMENTS:
-1. Write a self-contained, valid "use client"; React component named "LandingPagePreview" that exports as default.
-2. Use Tailwind CSS for all styling (modern typography, gradients, glassmorphism, responsive grid, accessible colors).
-3. Include Lucide React icons (e.g. import { ArrowRight, CheckCircle2, Star, Phone, Mail, Globe, Shield, Sparkles, Building2, ChevronRight } from "lucide-react";).
-4. Include an interactive component: e.g. a live Project Cost / Service Estimator calculator state, interactive FAQ accordions, or a tabbed solutions switcher.
-5. Hero section must have a compelling value proposition headline, subtitle, primary CTA button ("Request Proposal" / "Explore Properties" / "Schedule Consultation"), and trust badges.
-6. NO fabricated awards or fake executive names. Use professional, realistic industry copy.
-7. Return ONLY the complete, valid TypeScript JSX code within a \`\`\`tsx ... \`\`\` codeblock.
+STRICT DESIGN & AESTHETIC DIRECTIVES (NON-NEGOTIABLE):
+1. COLOR PALETTE — STRICT MONOCHROME ONLY:
+   - Light Mode: Pure solid white (#ffffff / bg-white) with sharp graphite/black text (#0a0a0a / text-neutral-900). Hairline borders (#e5e5e5 / border-neutral-200).
+   - Dark Mode: Pure pitch black (#000000 / bg-black) with clean white text (#ffffff / text-white). Muted borders (#262626 / border-neutral-800).
+   - Provide a working stateful Light/Dark theme toggle in the header.
+   - ABSOLUTE PROHIBITION on colorful gradients (no purple/cyan/pink blobs, no neon glows, no gradient text, no rainbow borders).
+2. TYPOGRAPHY IS THE HERO:
+   - High-contrast, clean typographic hierarchy with tight tracking (tracking-tight).
+   - Technical metadata & tags must use clean monospaced uppercase typography (font-mono text-xs uppercase tracking-widest text-neutral-500).
+   - Use tabular figures (tabular-nums font-mono) for all numbers, pricing, and statistics.
+   - Generous, disciplined whitespace and sharp architectural layout.
+3. CONTENT & DECORATION RULES:
+   - STRICTLY ZERO EMOJIS anywhere in the copy, headings, badges, or code.
+   - Use only minimal geometric Lucide React icons (e.g. ArrowRight, Check, Sun, Moon, Plus, Minus, RotateCcw).
+   - Zero fake reviews, zero fake awards, and zero cheesy AI buzzwords. Use realistic, high-caliber industry terminology.
+4. TECHNICAL EXECUTION:
+   - Write a self-contained, valid "use client"; React component named "LandingPagePreview" that exports as default.
+   - Include a working interactive component: e.g. a dynamic pricing/parameter calculator with sliders, or an interactive simulator, or an expandable feature matrix.
+   - Include a working consultation/inquiry form with clean input fields.
+   - Return ONLY the complete, valid TypeScript JSX code within a \`\`\`tsx ... \`\`\` codeblock.
 `;
 
     let generatedCode = "";
-    const candidateModels = ["gemini-3.5-flash-lite", "gemini-3.7-flash"];
+    const candidateModels = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite"];
 
     for (const model of candidateModels) {
       try {

@@ -226,6 +226,11 @@ export class DeveloperAgentService {
     simulateFailure?: boolean;
     simulateUnrecoverable?: boolean;
   }): Promise<{ execution: DeveloperExecutionRecord; task: any; taskScopeReport: TaskScopeItem[] }> {
+    const killCheck = emergencyKillSwitch.isOperationAllowed("SOURCE_MUTATION");
+    if (!killCheck.allowed) {
+      throw new Error(`EMERGENCY_STOP_BLOCKED: ${killCheck.blockedReason}`);
+    }
+
     const project = await projectRepository.getProjectById(params.projectId);
     if (!project) throw new Error(`Project not found: ${params.projectId}`);
 

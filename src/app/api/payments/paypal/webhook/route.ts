@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { payPalProvider } from "@/lib/services/payments/paypal.provider";
 import { payPalService } from "@/lib/services/payments/paypal.service";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
 
 export async function POST(req: Request) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const rawBody = await req.text();
     const headers: Record<string, string> = {};
     req.headers.forEach((value, key) => {
@@ -22,18 +25,12 @@ export async function POST(req: Request) {
     if (eventType === "PAYMENT.CAPTURE.COMPLETED" || eventType === "CHECKOUT.ORDER.COMPLETED") {
       const orderId = resource?.supplementary_data?.related_ids?.order_id || resource?.id;
       const captureId = resource?.id;
-      const amountVal = parseFloat(resource?.amount?.value || "0");
-      const amountMinorUnits = Math.round(amountVal * 100);
-      const currency = resource?.amount?.currency_code || "PHP";
 
       if (orderId && captureId) {
         const recon = await payPalService.reconcilePayPalCapture({
           orderId,
           captureId,
           eventId: verifyResult.eventId,
-          amountMinorUnits,
-          currency,
-          providerConfirmedAt: resource?.create_time,
           environment: verifyResult.environment,
         });
         return NextResponse.json({ ok: true, reconciled: true, invoice: recon.invoice, deliveryResponse: recon.deliveryResponse });
@@ -41,13 +38,14 @@ export async function POST(req: Request) {
     }
 
     // 2. Refund Event
+    // custom_id on the PayPal order is the payment-request ID, not a project ID.
     if (eventType === "PAYMENT.CAPTURE.REFUNDED") {
       const captureId = resource?.links?.find((l: any) => l.rel === "up")?.href?.split("/").pop() || resource?.id;
       const refundId = resource?.id;
       const refundRes = await payPalService.handleRefundWebhook({
         captureId,
         refundId,
-        projectId: resource?.custom_id,
+        paymentRequestId: resource?.custom_id,
       });
       return NextResponse.json({ ok: true, ...refundRes });
     }
@@ -59,7 +57,8 @@ export async function POST(req: Request) {
       const revRes = await payPalService.handleReversalWebhook({
         captureId,
         disputeId,
-        projectId: resource?.custom_id,
+        paymentRequestId: resource?.custom_id,
+        eventKind: eventType === "PAYMENT.CAPTURE.REVERSED" ? "REVERSAL" : "DISPUTE",
       });
       return NextResponse.json({ ok: true, ...revRes });
     }

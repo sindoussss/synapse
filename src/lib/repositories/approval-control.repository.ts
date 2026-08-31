@@ -171,6 +171,7 @@ export class ApprovalControlRepository {
 
   listRequests(filter?: {
     organizationId?: string;
+    workspaceId?: string;
     projectId?: string;
     status?: ApprovalStatus;
     riskLevel?: ApprovalRiskLevel;
@@ -179,6 +180,7 @@ export class ApprovalControlRepository {
     return this.requests
       .filter((r) => {
         if (filter?.organizationId && r.organizationId !== filter.organizationId) return false;
+        if (filter?.workspaceId && r.workspaceId !== filter.workspaceId) return false;
         if (filter?.projectId && r.projectId !== filter.projectId) return false;
         if (filter?.status && r.status !== filter.status) return false;
         if (filter?.riskLevel && r.riskLevel !== filter.riskLevel) return false;

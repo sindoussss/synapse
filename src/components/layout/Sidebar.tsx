@@ -45,6 +45,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       badgeHighlight: pendingApprovalsCount > 0,
     },
     {
+      name: "Live Previews",
+      href: "/preview",
+      badge: "3",
+      badgeHighlight: true,
+    },
+    {
       name: "Activity",
       href: "/activity",
       badge: null,
@@ -126,7 +132,30 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           })}
         </nav>
 
-        <div className="px-7 py-6 text-[12px] leading-relaxed text-[#666]">
+        {/* Live Agent Doings Module */}
+        <div className="px-7 py-4 border-t border-[#e5e5e5] bg-[#fafafa] space-y-2">
+          <div className="text-[11px] font-mono uppercase tracking-widest text-[#888] flex items-center justify-between">
+            <span>Agent Fleet Live</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          </div>
+
+          <div className="space-y-1.5 text-[12px] font-mono">
+            <div className="flex items-center justify-between">
+              <span className="text-[#333]">Developer (Gemma)</span>
+              <span className="text-[10px] text-emerald-600 font-bold">ACTIVE</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[#333]">CEO (Gemini)</span>
+              <span className="text-[10px] text-neutral-500 font-bold">SUPERVISING</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[#333]">Analyst (QA)</span>
+              <span className="text-[10px] text-emerald-600 font-bold">95/100 QA</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-7 py-4 border-t border-[#e5e5e5] text-[12px] leading-relaxed text-[#666]">
           <div>
             {dbStatus === "connected" ? "Supabase PostgreSQL" : "Local repository"}
           </div>

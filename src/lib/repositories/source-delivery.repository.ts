@@ -85,6 +85,11 @@ export class SourceDeliveryRepository {
     return cache.find((item) => item.projectId === projectId) || null;
   }
 
+  async listDeliveriesByInvoice(invoiceId: string): Promise<SourceDeliveryRecord[]> {
+    const cache = this.readCache<SourceDeliveryRecord>(this.deliveriesFile);
+    return cache.filter((item) => item.invoiceId === invoiceId);
+  }
+
   async recordAudit(audit: DeliveryAuditRecord): Promise<DeliveryAuditRecord> {
     const cache = this.readCache<DeliveryAuditRecord>(this.auditsFile);
     cache.unshift(audit);

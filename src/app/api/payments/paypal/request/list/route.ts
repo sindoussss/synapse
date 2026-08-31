@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { paymentRequestRepository } from "@/lib/repositories/payment-request.repository";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
 
 export async function GET(req: Request) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const { searchParams } = new URL(req.url);
     const invoiceId = searchParams.get("invoiceId");
 

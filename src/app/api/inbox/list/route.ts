@@ -2,9 +2,12 @@ import { NextResponse } from "next/server";
 import { emailMessageRepository } from "@/lib/repositories/message.repository";
 import { replyAnalysisRepository } from "@/lib/repositories/reply-analysis.repository";
 import { responseDraftRepository } from "@/lib/repositories/response-draft.repository";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const messages = await emailMessageRepository.getAll();
     const analyses = await replyAnalysisRepository.getAll();
     const drafts = await responseDraftRepository.getAll();

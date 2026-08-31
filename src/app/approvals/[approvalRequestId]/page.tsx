@@ -1,21 +1,30 @@
 import Link from "next/link";
 import { approvalControlService } from "@/lib/services/approval/approval-control.service";
+import { requireOperatorPagePrincipal } from "@/lib/http/require-operator-page";
+
+export const dynamic = "force-dynamic";
 
 export default async function ApprovalDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ approvalRequestId: string }>;
+  searchParams: Promise<{ projectId?: string }>;
 }) {
   const resolvedParams = await params;
-  const orgId = "ORG-CASILI-01";
-  const preview = approvalControlService.getApprovalPreview(resolvedParams.approvalRequestId, orgId);
+  const query = await searchParams;
+  const principal = await requireOperatorPagePrincipal(`/approvals/${resolvedParams.approvalRequestId}`);
+  const claimedProject = typeof query.projectId === "string" ? query.projectId : undefined;
+  const preview = approvalControlService.getVisiblePreview(principal, resolvedParams.approvalRequestId, {
+    projectId: claimedProject,
+  });
 
   if (!preview) {
     return (
       <div className="py-12">
         <h1 className="ops-display text-[28px] text-[#111]">Request not found</h1>
         <p className="mt-2 text-[14px] text-[#666]">
-          Request {resolvedParams.approvalRequestId} was not found or belongs to another tenant.
+          This approval request is not available.
         </p>
         <Link href="/approvals" className="inline-block mt-4 underline underline-offset-4">
           Back to approvals

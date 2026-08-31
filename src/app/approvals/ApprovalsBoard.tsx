@@ -2,10 +2,10 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import type { ApprovalRequestRecord } from "@/lib/repositories/approval-control.repository";
+import type { ApprovalBoardItem } from "@/lib/services/approval/approval-control.service";
 
 interface ApprovalsBoardProps {
-  requests: ApprovalRequestRecord[];
+  requests: ApprovalBoardItem[];
   exceptionCount: number;
 }
 

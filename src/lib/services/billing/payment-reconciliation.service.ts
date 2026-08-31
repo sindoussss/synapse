@@ -4,6 +4,7 @@ import {
   InvoiceRecord,
   LedgerVerificationState,
 } from "../../repositories/billing.repository";
+import { emergencyKillSwitch } from "../security/emergency-kill-switch.service";
 
 export interface PaymentReconciliationResult {
   status: "VERIFIED" | "PARTIALLY_VERIFIED" | "MISMATCH" | "REVERSED" | "REFUNDED" | "DISPUTED" | "UNKNOWN";
@@ -27,6 +28,11 @@ export class PaymentReconciliationService {
     environment: "LIVE" | "SANDBOX" | "CONTROLLED_TEST";
     sourceEventId?: string;
   }): PaymentReconciliationResult {
+    const killCheck = emergencyKillSwitch.isOperationAllowed("PAYMENT_MUTATION");
+    if (!killCheck.allowed) {
+      throw new Error(`EMERGENCY_STOP_BLOCKED: ${killCheck.blockedReason}`);
+    }
+
     const invoice = billingRepository.getInvoice(params.invoiceId, params.organizationId);
     if (!invoice) {
       return {
@@ -145,6 +151,11 @@ export class PaymentReconciliationService {
     environment: "LIVE" | "SANDBOX" | "CONTROLLED_TEST";
     sourceEventId?: string;
   }): { ledgerEntry: PaymentLedgerEntryRecord; updatedInvoice: InvoiceRecord } {
+    const killCheck = emergencyKillSwitch.isOperationAllowed("PAYMENT_MUTATION");
+    if (!killCheck.allowed) {
+      throw new Error(`EMERGENCY_STOP_BLOCKED: ${killCheck.blockedReason}`);
+    }
+
     const invoice = billingRepository.getInvoice(params.invoiceId, params.organizationId);
     if (!invoice) throw new Error(`Invoice not found: ${params.invoiceId}`);
 
@@ -191,6 +202,11 @@ export class PaymentReconciliationService {
     environment: "LIVE" | "SANDBOX" | "CONTROLLED_TEST";
     sourceEventId?: string;
   }): { ledgerEntry: PaymentLedgerEntryRecord; updatedInvoice: InvoiceRecord } {
+    const killCheck = emergencyKillSwitch.isOperationAllowed("PAYMENT_MUTATION");
+    if (!killCheck.allowed) {
+      throw new Error(`EMERGENCY_STOP_BLOCKED: ${killCheck.blockedReason}`);
+    }
+
     const invoice = billingRepository.getInvoice(params.invoiceId, params.organizationId);
     if (!invoice) throw new Error(`Invoice not found: ${params.invoiceId}`);
 
@@ -236,6 +252,11 @@ export class PaymentReconciliationService {
     environment: "LIVE" | "SANDBOX" | "CONTROLLED_TEST";
     disputeStatus: "OPEN" | "UNDER_REVIEW" | "RESOLVED" | "LOST" | "WON";
   }): { ledgerEntry: PaymentLedgerEntryRecord; updatedInvoice: InvoiceRecord } {
+    const killCheck = emergencyKillSwitch.isOperationAllowed("PAYMENT_MUTATION");
+    if (!killCheck.allowed) {
+      throw new Error(`EMERGENCY_STOP_BLOCKED: ${killCheck.blockedReason}`);
+    }
+
     const invoice = billingRepository.getInvoice(params.invoiceId, params.organizationId);
     if (!invoice) throw new Error(`Invoice not found: ${params.invoiceId}`);
 

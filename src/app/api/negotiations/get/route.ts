@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { negotiationRepository } from "@/lib/repositories/negotiation.repository";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
 
 export async function GET(req: NextRequest) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const { searchParams } = new URL(req.url);
     const opportunityId = searchParams.get("opportunityId");
     const sessionId = searchParams.get("sessionId");

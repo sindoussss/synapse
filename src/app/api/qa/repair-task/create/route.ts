@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { qaAgentService } from "@/lib/services/qa/qa-agent.service";
+import { denyUnlessAuthenticated } from "@/lib/http/enforce-http-auth";
 
 export async function POST(req: Request) {
   try {
+    const denied = denyUnlessAuthenticated(req);
+    if (denied) return denied;
     const { defectId } = await req.json();
     if (!defectId) return NextResponse.json({ ok: false, error: "defectId is required" }, { status: 400 });
     const result = await qaAgentService.createRepairTask(defectId);
