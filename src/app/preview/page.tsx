@@ -4,8 +4,10 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { 
   ArrowLeft, ExternalLink, Monitor, Tablet, Smartphone, 
-  RotateCw, CheckCircle2, Shield, Eye, Sparkles
+  RotateCw, CheckCircle2, Shield, Eye, Sparkles, BarChart3
 } from 'lucide-react';
+import { DeveloperBenchmarkModal } from '@/components/preview/DeveloperBenchmarkModal';
+import { LiveAgentInspector } from '@/components/preview/LiveAgentInspector';
 
 const PREVIEW_PROJECTS = [
   {
@@ -13,16 +15,16 @@ const PREVIEW_PROJECTS = [
     name: "Simulation With Daniel",
     subtitle: "Applied Numerical Simulation & Computational Physics",
     slug: "ai-generated-daniel",
-    engine: "Gemini 3.6 Flash (Swiss Minimalist Typography)",
-    qaScore: "95/100",
+    engine: "Gemma 12B (Local GPU) + Qwen 3.8 27B (Supervisor)",
+    qaScore: "98/100",
     status: "PRODUCTION READY",
   },
   {
     id: "PRJ-GEMMA-01",
-    name: "Simulation With Daniel (Gemma Supervised)",
-    subtitle: "Multi-Model Local Gemma Coder + Gemini Architect",
+    name: "Simulation With Daniel (Gemma Coded)",
+    subtitle: "Multi-Model Local Gemma Coder + Qwen Supervisor",
     slug: "gemma-coded-daniel",
-    engine: "Gemma 12B Coder (Local GPU) + Gemini Reviewer",
+    engine: "Gemma 12B Coder (Local GPU) + Qwen Reviewer",
     qaScore: "96/100",
     status: "VERIFIED CANDIDATE",
   },
@@ -43,6 +45,7 @@ export default function LivePreviewStudioPage() {
   const [selectedProject, setSelectedProject] = useState(PREVIEW_PROJECTS[0]);
   const [device, setDevice] = useState<DeviceView>("desktop");
   const [key, setKey] = useState(0);
+  const [showBenchmarks, setShowBenchmarks] = useState(false);
 
   const getFrameWidth = () => {
     switch (device) {
@@ -60,8 +63,21 @@ export default function LivePreviewStudioPage() {
 
   return (
     <div className="min-h-screen bg-[#f5f5f7] text-[#111] flex flex-col font-sans">
+      {/* Developer Benchmark Modal */}
+      <DeveloperBenchmarkModal
+        isOpen={showBenchmarks}
+        onClose={() => setShowBenchmarks(false)}
+        projectName={selectedProject.name}
+      />
+
+      {/* Floating Left Operations HUD */}
+      <LiveAgentInspector 
+        projectName={selectedProject.name}
+        projectId={selectedProject.id}
+      />
+
       {/* Top Staging Control Bar */}
-      <header className="bg-white border-b border-[#e5e5e5] px-6 h-16 flex items-center justify-between sticky top-0 z-50 shadow-xs">
+      <header className="bg-white border-b border-[#e5e5e5] px-6 h-16 flex items-center justify-between sticky top-0 z-30 shadow-xs">
         {/* Left: Back & Project Selection */}
         <div className="flex items-center gap-6">
           <Link
@@ -134,8 +150,17 @@ export default function LivePreviewStudioPage() {
           </button>
         </div>
 
-        {/* Right: Telemetry & Standalone Link */}
-        <div className="flex items-center gap-4">
+        {/* Right: Benchmarks & Standalone Link */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowBenchmarks(true)}
+            className="flex items-center gap-1.5 bg-[#f0f0f2] hover:bg-[#e5e5e5] text-[#111] px-3 py-1.5 text-xs font-mono uppercase tracking-wider rounded border border-[#e5e5e5] transition-colors cursor-pointer"
+            title="View Developer Agent Benchmarks"
+          >
+            <BarChart3 className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Benchmarks</span>
+          </button>
+
           <div className="hidden lg:flex items-center gap-2 text-[11px] font-mono text-[#666]">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             <span>QA PASS ({selectedProject.qaScore})</span>

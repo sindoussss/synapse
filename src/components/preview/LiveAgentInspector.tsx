@@ -86,23 +86,23 @@ export function LiveAgentInspector({
               </div>
             </div>
 
-            {/* 2. CEO / Supervisor (Gemini) */}
+            {/* 2. Supervisor (Qwen 3.8 27B) */}
             <div className="border border-neutral-800 bg-neutral-950/60 p-3 space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
                   <Layers className="w-3.5 h-3.5 text-neutral-400" />
-                  Agent CEO (Supervisor)
+                  Supervisor Agent
                 </span>
-                <span className="text-[9px] border border-neutral-700 px-1 text-neutral-300">
-                  Gemini 3.6
+                <span className="text-[9px] border border-neutral-700 px-1 text-neutral-300 font-bold">
+                  Qwen 27B
                 </span>
               </div>
               <p className="text-[11px] text-neutral-300">
-                Architectural blueprinting & Swiss typography governance.
+                Architectural blueprinting, AST audit & Swiss monochrome enforcement.
               </p>
-              <div className="text-[10px] text-neutral-400 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-neutral-500"></span>
-                Supervising Gemma Coder
+              <div className="text-[10px] text-emerald-400 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                Nominal (520 tok/s)
               </div>
             </div>
 
