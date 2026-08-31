@@ -1,19 +1,62 @@
-"use client";
+﻿"use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { workOrchestrationRepository, WorkItemRecord, WorkStatus } from "@/lib/repositories/work-orchestration.repository";
-import { workOrchestratorService } from "@/lib/services/orchestration/work-orchestrator.service";
+
+interface WorkItem {
+  workItemId: string;
+  organizationId: string;
+  projectId: string;
+  workType: string;
+  priority: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  status: string;
+  eligibleActors: string[];
+  blockingReasons: string[];
+  dependencies: string[];
+}
+
+interface QueueSummary {
+  totalCount: number;
+  readyCount: number;
+  blockedCount: number;
+  waitingHumanCount: number;
+  runningCount: number;
+  criticalCount: number;
+}
 
 export default function GlobalWorkQueuePage() {
   const [filter, setFilter] = useState<string>("ALL");
-  const orgId = "ORG-CASILI-01";
-
-  const summary = workOrchestratorService.getQueueSummary(orgId);
-  const items = workOrchestrationRepository.listWorkItems({
-    organizationId: orgId,
-    status: filter === "ALL" ? undefined : (filter as WorkStatus),
+  const [items, setItems] = useState<WorkItem[]>([]);
+  const [summary, setSummary] = useState<QueueSummary>({
+    totalCount: 0,
+    readyCount: 0,
+    blockedCount: 0,
+    waitingHumanCount: 0,
+    runningCount: 0,
+    criticalCount: 0,
   });
+  const [loading, setLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setLoading(true);
+        const res = await fetch(`/api/work-queue/list?organizationId=ORG-CASILI-01&status=${filter}`);
+        const data = await res.json();
+        if (data.ok) {
+          setItems(data.items || []);
+          if (data.summary) {
+            setSummary(data.summary);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load work queue", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, [filter]);
 
   return (
     <div className="text-[#111] p-4 md:p-8 font-sans">
@@ -34,7 +77,7 @@ export default function GlobalWorkQueuePage() {
           <div className="flex items-center gap-3">
             <Link
               href="/project-control"
-              className="text-xs px-3 py-1.5 rounded-lg bg-[#f7f7f5] border border-[#d4d4d0] text-[#333333] hover:bg-slate-700 transition-all font-semibold"
+              className="text-xs px-3 py-1.5 rounded-lg bg-[#f7f7f5] border border-[#d4d4d0] text-[#333333] hover:bg-[#eaeaea] transition-all font-semibold"
             >
               ← Command Center
             </Link>
@@ -49,23 +92,23 @@ export default function GlobalWorkQueuePage() {
           </div>
           <div className="bg-white/60 border border-[#d4d4d0] p-3 rounded-xl">
             <div className="text-[#666666] font-sans text-[11px]">Ready to Run</div>
-            <div className="text-lg font-bold text-emerald-400 mt-0.5">{summary.readyCount}</div>
+            <div className="text-lg font-bold text-emerald-600 mt-0.5">{summary.readyCount}</div>
           </div>
           <div className="bg-white/60 border border-[#d4d4d0] p-3 rounded-xl">
             <div className="text-[#666666] font-sans text-[11px]">Blocked</div>
-            <div className="text-lg font-bold text-rose-400 mt-0.5">{summary.blockedCount}</div>
+            <div className="text-lg font-bold text-rose-600 mt-0.5">{summary.blockedCount}</div>
           </div>
           <div className="bg-white/60 border border-[#d4d4d0] p-3 rounded-xl">
             <div className="text-[#666666] font-sans text-[11px]">Waiting Human</div>
-            <div className="text-lg font-bold text-amber-400 mt-0.5">{summary.waitingHumanCount}</div>
+            <div className="text-lg font-bold text-amber-600 mt-0.5">{summary.waitingHumanCount}</div>
           </div>
           <div className="bg-white/60 border border-[#d4d4d0] p-3 rounded-xl">
             <div className="text-[#666666] font-sans text-[11px]">Active Running</div>
-            <div className="text-lg font-bold text-cyan-400 mt-0.5">{summary.runningCount}</div>
+            <div className="text-lg font-bold text-cyan-600 mt-0.5">{summary.runningCount}</div>
           </div>
           <div className="bg-white/60 border border-[#d4d4d0] p-3 rounded-xl">
             <div className="text-[#666666] font-sans text-[11px]">Critical Items</div>
-            <div className="text-lg font-bold text-red-400 mt-0.5">{summary.criticalCount}</div>
+            <div className="text-lg font-bold text-red-600 mt-0.5">{summary.criticalCount}</div>
           </div>
         </div>
 
@@ -75,10 +118,10 @@ export default function GlobalWorkQueuePage() {
             <button
               key={st}
               onClick={() => setFilter(st)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                 filter === st
-                  ? "bg-indigo-600 text-[#111111] shadow-md shadow-indigo-600/30"
-                  : "bg-[#f7f7f5] text-[#333333] hover:bg-slate-700 border border-[#d4d4d0]"
+                  ? "bg-black text-white shadow-xs"
+                  : "bg-[#f7f7f5] text-[#333333] hover:bg-[#eaeaea] border border-[#d4d4d0]"
               }`}
             >
               {st.replace("_", " ")}
@@ -87,10 +130,10 @@ export default function GlobalWorkQueuePage() {
         </div>
 
         {/* Work Table */}
-        <div className="bg-white/40 rounded-xl border border-[#d4d4d0] overflow-hidden shadow-2xl">
+        <div className="bg-white/80 rounded-xl border border-[#d4d4d0] overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-white border-b border-[#d4d4d0] text-[#666666] font-semibold uppercase tracking-wider">
+              <thead className="bg-[#f7f7f5] border-b border-[#d4d4d0] text-[#666666] font-semibold uppercase tracking-wider">
                 <tr>
                   <th className="py-3.5 px-4">Work Item ID & Project</th>
                   <th className="py-3.5 px-4">Type</th>
@@ -101,8 +144,14 @@ export default function GlobalWorkQueuePage() {
                   <th className="py-3.5 px-4 text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 font-mono">
-                {items.length === 0 ? (
+              <tbody className="divide-y divide-[#e5e5e5] font-mono">
+                {loading ? (
+                  <tr>
+                    <td colSpan={7} className="py-8 text-center text-[#777777] font-sans">
+                      Loading work queue items...
+                    </td>
+                  </tr>
+                ) : items.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-8 text-center text-[#777777] font-sans">
                       No work items match filter '{filter}'.
@@ -110,7 +159,7 @@ export default function GlobalWorkQueuePage() {
                   </tr>
                 ) : (
                   items.map((item) => (
-                    <tr key={item.workItemId} className="hover:bg-[#f7f7f5]/30 transition-colors">
+                    <tr key={item.workItemId} className="hover:bg-[#f7f7f5] transition-colors">
                       <td className="py-3.5 px-4">
                         <div className="font-bold text-[#111111]">{item.workItemId}</div>
                         <div className="text-[#666666] text-[11px] font-sans">{item.projectId}</div>
@@ -120,9 +169,9 @@ export default function GlobalWorkQueuePage() {
                         <span
                           className={`px-2 py-0.5 rounded text-[11px] font-bold ${
                             item.priority === "CRITICAL"
-                              ? "bg-red-950 text-red-300 border border-red-800"
+                              ? "bg-red-100 text-red-700 border border-red-300"
                               : item.priority === "HIGH"
-                              ? "bg-amber-950 text-amber-300 border border-amber-800"
+                              ? "bg-amber-100 text-amber-700 border border-amber-300"
                               : "bg-[#f7f7f5] text-[#333333] border border-[#d4d4d0]"
                           }`}
                         >
@@ -133,11 +182,11 @@ export default function GlobalWorkQueuePage() {
                         <span
                           className={`px-2 py-0.5 rounded text-[11px] font-bold ${
                             item.status === "READY"
-                              ? "bg-[#f0fdf4] text-[#166534] border border-[#86efac]"
+                              ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
                               : item.status === "WAITING_HUMAN"
-                              ? "bg-amber-950 text-amber-300 border border-amber-800"
+                              ? "bg-amber-100 text-amber-800 border border-amber-300"
                               : item.status === "BLOCKED"
-                              ? "bg-rose-950 text-rose-300 border border-rose-800"
+                              ? "bg-rose-100 text-rose-800 border border-rose-300"
                               : "bg-[#f7f7f5] text-[#333333]"
                           }`}
                         >
@@ -145,19 +194,19 @@ export default function GlobalWorkQueuePage() {
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-[#666666] text-[11px]">
-                        {item.eligibleActors.join(", ")}
+                        {item.eligibleActors?.join(", ")}
                       </td>
                       <td className="py-3.5 px-4 text-[#666666] text-[11px] font-sans">
-                        {item.blockingReasons.length > 0
+                        {item.blockingReasons?.length > 0
                           ? item.blockingReasons.join("; ")
-                          : item.dependencies.length > 0
+                          : item.dependencies?.length > 0
                           ? `Depends on: ${item.dependencies.join(", ")}`
                           : "None (Clean)"}
                       </td>
                       <td className="py-3.5 px-4 text-right font-sans">
                         <Link
                           href={`/project-control/${item.projectId}/work`}
-                          className="inline-block px-2.5 py-1 rounded bg-[#f7f7f5] hover:bg-slate-700 border border-[#d4d4d0] text-[11px] font-semibold text-indigo-300"
+                          className="inline-block px-2.5 py-1 rounded bg-[#f7f7f5] hover:bg-[#e5e5e5] border border-[#d4d4d0] text-[11px] font-semibold text-neutral-800"
                         >
                           Details →
                         </Link>
