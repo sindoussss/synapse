@@ -8,18 +8,26 @@ import { approvalRepository } from "../../repositories/approval.repository";
 import { replyAnalyzerService, AnalysisResult } from "../sales/reply-analyzer";
 
 export interface SyncResult {
+  isConfigured?: boolean;
   syncedCount: number;
   newRepliesCount: number;
   processedReplies: {
     message: EmailMessageRecord;
     analysisResult: AnalysisResult;
   }[];
+  message?: string;
 }
 
 export class InboxSyncService {
   async syncReplies(maxMessages: number = 30): Promise<SyncResult> {
     if (!gmailEmailProvider.isConfigured()) {
-      throw new Error("Gmail credentials not configured in .env.local.");
+      return {
+        isConfigured: false,
+        syncedCount: 0,
+        newRepliesCount: 0,
+        processedReplies: [],
+        message: "Gmail Standby: Add GMAIL_USER and GMAIL_APP_PASSWORD to link live inbox.",
+      };
     }
 
     const inboundList: InboundEmailMessage[] = await gmailEmailProvider.fetchRecentInboundMessages(maxMessages);

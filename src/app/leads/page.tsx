@@ -6,25 +6,43 @@ import { LeadsTable } from "@/components/leads/LeadsTable";
 import { StatCard } from "@/components/ui/StatCard";
 import { Button } from "@/components/ui/Button";
 import { useTaskManager } from "@/context/TaskContext";
-import { Building2, Globe, TrendingUp, DollarSign, RefreshCw, Inbox, CheckCircle2 } from "lucide-react";
+import { Building2, Globe, TrendingUp, DollarSign, RefreshCw, Inbox, CheckCircle2, AlertCircle, Info } from "lucide-react";
 
 function CheckRepliesButton() {
   const { refresh } = useTaskManager();
   const [syncing, setSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<{
+    type: "success" | "info" | "error";
+    message: string;
+  } | null>(null);
 
   const handleSync = async () => {
     setSyncing(true);
-    setSyncMessage(null);
+    setSyncStatus(null);
     try {
       const res = await fetch("/api/inbox/sync", { method: "POST" });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "Sync failed");
-      setSyncMessage(`Synced! ${data.result.newRepliesCount} new replies analyzed.`);
-      await refresh();
-      setTimeout(() => setSyncMessage(null), 5000);
+
+      if (data.result?.isConfigured === false) {
+        setSyncStatus({
+          type: "info",
+          message: "Gmail Standby: Ready for GMAIL_USER credentials in settings.",
+        });
+      } else {
+        setSyncStatus({
+          type: "success",
+          message: `Synced! ${data.result.newRepliesCount} new replies analyzed.`,
+        });
+        await refresh();
+      }
+      setTimeout(() => setSyncStatus(null), 6000);
     } catch (err: any) {
-      setSyncMessage(`Sync failed: ${err.message}`);
+      setSyncStatus({
+        type: "error",
+        message: err.message || "Sync failed",
+      });
+      setTimeout(() => setSyncStatus(null), 6000);
     } finally {
       setSyncing(false);
     }
@@ -32,9 +50,20 @@ function CheckRepliesButton() {
 
   return (
     <div className="flex items-center gap-2">
-      {syncMessage && (
-        <span className="text-[11px] font-mono text-[#047857] flex items-center gap-1 bg-[#ecfdf5] px-2 py-1 border border-[#065f46]">
-          <CheckCircle2 size={11} /> {syncMessage}
+      {syncStatus && (
+        <span
+          className={`text-[11px] font-mono flex items-center gap-1.5 px-2.5 py-1 border rounded transition-all ${
+            syncStatus.type === "success"
+              ? "text-emerald-700 bg-emerald-50 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+              : syncStatus.type === "info"
+              ? "text-neutral-700 bg-neutral-100 border-neutral-300 dark:bg-neutral-900 dark:text-neutral-300 dark:border-neutral-700"
+              : "text-rose-700 bg-rose-50 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800"
+          }`}
+        >
+          {syncStatus.type === "success" && <CheckCircle2 size={12} />}
+          {syncStatus.type === "info" && <Info size={12} />}
+          {syncStatus.type === "error" && <AlertCircle size={12} />}
+          {syncStatus.message}
         </span>
       )}
       <Button
@@ -42,7 +71,7 @@ function CheckRepliesButton() {
         variant="secondary"
         onClick={handleSync}
         loading={syncing}
-        icon={<Inbox size={13} className="text-[#047857]" />}
+        icon={<Inbox size={13} />}
       >
         {syncing ? "Checking Gmail Inbound..." : "Check Replies (Gmail)"}
       </Button>
