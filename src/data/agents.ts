@@ -46,7 +46,7 @@ export const MOCK_AGENTS: Agent[] = [
     role: "Prototype Generation & Code Audit",
     status: "idle",
     currentTask: "Idle - No active task assigned",
-    model: "Ollama Local (Gemma4 12B Coder Q4_K_M)",
+    model: "Gemma4 12B Coder (Supervised by Qwen 3.8 27B)",
     tasksCompleted: 0,
     uptime: "99.75%",
     lastActive: "Nominal",

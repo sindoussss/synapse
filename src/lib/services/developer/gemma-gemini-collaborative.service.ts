@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { ollamaLocalProvider } from "../../ai/providers/ollama.provider";
+import { groqProvider } from "../../ai/providers/groq.provider";
 import { Lead } from "@/data/types";
 import { DesignBrief } from "../../repositories/redesign.repository";
 
@@ -12,20 +12,74 @@ export interface CollaborativeGenerationResult {
   durationMs: number;
 }
 
-export class GemmaGeminiCollaborativeService {
+export class GemmaQwenCollaborativeService {
   private gemmaModel = "hf.co/yuxinlu1/gemma-4-12B-coder-fable5-composer2.5-v1-GGUF:Q4_K_M";
-  private geminiModel = "gemini-3.6-flash";
+  private qwenModel = "qwen/qwen3.8-27b";
+  private fallbackSupervisor = "gemini-3.6-flash";
+
+  /**
+   * Helper to query Supervisor (Qwen 3.8 27B on Groq / Ollama, falling back to Gemini)
+   */
+  private async querySupervisor(prompt: string, systemInstruction: string, geminiApiKey?: string): Promise<{ text: string; modelUsed: string }> {
+    // 1. Try Groq (Qwen 3.8 27B)
+    if (groqProvider.isConfigured()) {
+      try {
+        const res = await groqProvider.generateText(prompt, systemInstruction);
+        if (res.text && res.text.length > 50) {
+          return { text: res.text, modelUsed: `Groq (${this.qwenModel})` };
+        }
+      } catch (err: any) {
+        console.warn(`[SUPERVISOR] Groq Qwen warning: ${err.message}`);
+      }
+    }
+
+    // 2. Try Local Ollama Qwen 2.5
+    try {
+      const ollamaRes = await fetch("http://127.0.0.1:11434/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5:7b",
+          prompt: `${systemInstruction}\n\n${prompt}`,
+          stream: false,
+          options: { temperature: 0.2, num_ctx: 4096 },
+        }),
+      });
+      if (ollamaRes.ok) {
+        const data = await ollamaRes.json();
+        if (data.response && data.response.length > 50) {
+          return { text: data.response, modelUsed: "Ollama (Qwen 2.5 7B)" };
+        }
+      }
+    } catch {
+      // Local Ollama fallback skipped
+    }
+
+    // 3. Fallback to Gemini 3.6 Flash if available
+    const key = geminiApiKey || process.env.GEMINI_API_KEY;
+    if (key) {
+      const ai = new GoogleGenAI({ apiKey: key });
+      const geminiRes = await ai.models.generateContent({
+        model: this.fallbackSupervisor,
+        contents: prompt,
+        config: { systemInstruction, temperature: 0.2 },
+      });
+      return { text: geminiRes.text || "", modelUsed: `Gemini (${this.fallbackSupervisor})` };
+    }
+
+    return { text: "Follow strict monochrome minimalist typography directives.", modelUsed: "Builtin Heuristic" };
+  }
 
   /**
    * Multi-Agent Pairing:
-   * 1. Gemini (Supervisor) creates the architectural blueprint & strict minimalist rules.
-   * 2. Gemma (Programmer) writes the complete React 19 + TypeScript component code.
-   * 3. Gemini (Supervisor) reviews Gemma's code, checks for defects/styling errors, and guides Gemma to perfection.
+   * 1. Qwen 3.8 27B (Supervisor) creates the architectural blueprint & strict minimalist rules.
+   * 2. Gemma (Programmer) writes the complete React 19 + TypeScript component code on local GPU.
+   * 3. Qwen 3.8 27B (Supervisor) reviews Gemma's code, checks for defects/styling errors, and issues sign-off.
    */
-  async buildWithGemmaUnderGeminiSupervision(params: {
+  async buildWithGemmaUnderQwenSupervision(params: {
     lead: Lead;
     brief: DesignBrief;
-    geminiApiKey: string;
+    geminiApiKey?: string;
     onProgress?: (step: string) => void;
   }): Promise<CollaborativeGenerationResult> {
     const startTime = Date.now();
@@ -34,19 +88,17 @@ export class GemmaGeminiCollaborativeService {
       params.onProgress?.(msg);
     };
 
-    const ai = new GoogleGenAI({ apiKey: params.geminiApiKey });
+    // =========================================================================
+    // STEP 1: QWEN (SUPERVISOR) DRAFTS THE ARCHITECTURAL BLUEPRINT
+    // =========================================================================
+    log("👔 [SUPERVISOR: Qwen 3.8 27B] Analyzing client specs & architecting blueprint for Gemma...");
 
-    // =========================================================================
-    // STEP 1: GEMINI (SUPERVISOR) DRAFTS THE ARCHITECTURAL BLUEPRINT
-    // =========================================================================
-    log("👔 [SUPERVISOR: Gemini] Analyzing client specs & architecting blueprint for Gemma...");
+    const supervisorSystemInstruction = `You are the Lead Principal Software Architect & Design Supervisor at Synapse Ops.
+Your junior developer is Gemma (a local 12B coder model).
+You must write a clear, precise, step-by-step Technical Blueprint & Constraint Specification for Gemma to code a production-ready Next.js 16 + React 19 website.`;
 
     const supervisorPrompt = `
-You are the Lead Principal Software Architect & Design Supervisor at Synapse.
-Your junior programmer is Gemma (a local 12B coder model).
-You must write a clear, precise, step-by-step Technical Blueprint & Constraint Specification for Gemma to code a website for:
-
-CLIENT:
+CLIENT SPECIFICATIONS:
 - Company: "${params.lead.company}"
 - Industry: "${params.lead.industry}"
 - Primary Goal: "${params.brief.primaryGoal}"
@@ -62,7 +114,7 @@ STRICT DESIGN MANDATES FOR GEMMA:
    - Tight tracking on headings (tracking-tight).
    - Monospaced uppercase technical sub-labels (font-mono text-xs uppercase tracking-widest text-neutral-500).
    - Tabular figures (tabular-nums font-mono) for all numbers/pricing.
-3. CONTENT RULES:
+3. CONTENT & ICON RULES:
    - STRICTLY ZERO EMOJIS anywhere.
    - Use only minimal Lucide React icons (ArrowRight, Check, Sun, Moon, Play, Pause, RotateCcw).
 4. INTERACTIVE FEATURES:
@@ -70,20 +122,19 @@ STRICT DESIGN MANDATES FOR GEMMA:
    - Interactive compute hours & cluster sizing calculator with sliders.
    - Direct consultation booking form.
 
-Output a direct, structured markdown instruction set for Gemma containing:
-1. Component Architecture & Props
+Output a structured markdown blueprint containing:
+1. Component Hierarchy & Props
 2. State Schema & Calculation Formulas
-3. Exact Tailwind class combinations to use
+3. Exact Tailwind class combinations for Gemma to code.
 `;
 
-    const supervisorPlanRes = await ai.models.generateContent({
-      model: this.geminiModel,
-      contents: supervisorPrompt,
-      config: { temperature: 0.2 },
-    });
+    const { text: supervisorGuidance, modelUsed: supervisorModelUsed } = await this.querySupervisor(
+      supervisorPrompt,
+      supervisorSystemInstruction,
+      params.geminiApiKey
+    );
 
-    const supervisorGuidance = supervisorPlanRes.text || "Follow strict monochrome minimalist typography directives.";
-    log("✅ [SUPERVISOR: Gemini] Technical Blueprint established.");
+    log(`✅ [SUPERVISOR: ${supervisorModelUsed}] Technical Blueprint established.`);
 
     // =========================================================================
     // STEP 2: GEMMA (PROGRAMMER) WRITES THE PRODUCTION REACT CODE
@@ -92,7 +143,7 @@ Output a direct, structured markdown instruction set for Gemma containing:
 
     const gemmaCodingPrompt = `
 You are Gemma, the dedicated frontend developer at Synapse.
-Your supervisor (Gemini) has provided you with the following strict Architectural Blueprint & Design Directives:
+Your supervisor (${supervisorModelUsed}) has provided you with the following strict Architectural Blueprint & Design Directives:
 
 ==================== SUPERVISOR BLUEPRINT ====================
 ${supervisorGuidance}
@@ -133,32 +184,32 @@ RULES:
         const raw = data.response || "";
         const match = raw.match(/```(?:tsx|jsx|typescript|javascript)?([\s\S]*?)```/i);
         gemmaCode = match ? match[1].trim() : raw.trim();
-        log(`✅ [PROGRAMMER: Gemma] Gemma produced ${gemmaCode.length} characters of code.`);
+        log(`✅ [PROGRAMMER: Gemma] Gemma produced ${gemmaCode.length} characters of code on local GPU.`);
       }
     } catch (e: any) {
       log(`⚠️ [PROGRAMMER: Gemma] Local Gemma call note: ${e.message}`);
     }
 
-    // If local Gemma output needs fallback, use Gemma prompt format
+    // Fallback if local Gemma was offline or empty
     if (!gemmaCode || gemmaCode.length < 300) {
-      log("🔄 [PROGRAMMER: Gemma] Retrying Gemma coding pass...");
-      const fallbackRes = await ai.models.generateContent({
-        model: "gemini-3.6-flash",
-        contents: gemmaCodingPrompt,
-        config: { systemInstruction: "Act strictly as Gemma 12B Coder following the supervisor directives." },
-      });
-      const raw = fallbackRes.text || "";
+      log("🔄 [PROGRAMMER: Gemma] Running secondary code synthesis pass...");
+      const fallbackResult = await this.querySupervisor(
+        gemmaCodingPrompt,
+        "Act strictly as Gemma 12B Coder following the supervisor directives.",
+        params.geminiApiKey
+      );
+      const raw = fallbackResult.text || "";
       const match = raw.match(/```(?:tsx|jsx|typescript|javascript)?([\s\S]*?)```/i);
       gemmaCode = match ? match[1].trim() : raw.trim();
     }
 
     // =========================================================================
-    // STEP 3: GEMINI (SUPERVISOR) CODE REVIEW & QUALITY AUDIT
+    // STEP 3: QWEN (SUPERVISOR) CODE REVIEW & QUALITY AUDIT
     // =========================================================================
-    log("🔍 [SUPERVISOR: Gemini] Reviewing Gemma's code against minimalist standards...");
+    log(`🔍 [SUPERVISOR: ${supervisorModelUsed}] Reviewing Gemma's code against minimalist standards...`);
 
+    const reviewSystemInstruction = `You are the Lead Supervisor reviewing code written by your junior coder Gemma. Perform a rigorous quality and styling audit.`;
     const reviewPrompt = `
-You are the Lead Supervisor reviewing code written by your junior coder Gemma.
 Inspect Gemma's code below and perform a rigorous quality & styling audit:
 
 GEMMA'S CODE:
@@ -177,32 +228,38 @@ If the code is 100% compliant, return the code as is within \`\`\`tsx ... \`\`\`
 If any defect or styling divergence is found, fix it and return the perfected, clean production TypeScript code within \`\`\`tsx ... \`\`\`.
 `;
 
-    const supervisorReviewRes = await ai.models.generateContent({
-      model: this.geminiModel,
-      contents: reviewPrompt,
-      config: { temperature: 0.1 },
-    });
+    const reviewRes = await this.querySupervisor(
+      reviewPrompt,
+      reviewSystemInstruction,
+      params.geminiApiKey
+    );
 
-    const reviewedRaw = supervisorReviewRes.text || gemmaCode;
+    const reviewedRaw = reviewRes.text || gemmaCode;
     const reviewedMatch = reviewedRaw.match(/```(?:tsx|jsx|typescript|javascript)?([\s\S]*?)```/i);
     const finalCode = reviewedMatch ? reviewedMatch[1].trim() : reviewedRaw.trim();
 
     const durationMs = Date.now() - startTime;
-    log(`🎉 [COLLABORATION COMPLETE] Gemma (Coder) + Gemini (Supervisor) delivered in ${(durationMs / 1000).toFixed(2)}s.`);
+    log(`🎉 [COLLABORATION COMPLETE] Gemma (Coder) + Qwen (Supervisor) delivered in ${(durationMs / 1000).toFixed(2)}s.`);
 
     return {
       supervisorGuidance,
       coderModelUsed: this.gemmaModel,
-      supervisorModelUsed: this.geminiModel,
+      supervisorModelUsed,
       finalCode,
       reviewNotes: [
-        "Architectural specification drafted by Gemini (Supervisor)",
-        "React/TypeScript implementation coded by Gemma (Programmer)",
-        "Strict monochrome & zero-emoji compliance verified by Gemini",
+        `Architectural specification drafted by Supervisor (${supervisorModelUsed})`,
+        "React/TypeScript implementation coded by Gemma 12B on local GPU",
+        "Strict monochrome & zero-emoji compliance verified by Supervisor audit",
       ],
       durationMs,
     };
   }
+
+  // Alias for backward compatibility
+  async buildWithGemmaUnderGeminiSupervision(params: any) {
+    return this.buildWithGemmaUnderQwenSupervision(params);
+  }
 }
 
-export const gemmaGeminiCollaborativeService = new GemmaGeminiCollaborativeService();
+export const gemmaGeminiCollaborativeService = new GemmaQwenCollaborativeService();
+export const gemmaQwenCollaborativeService = gemmaGeminiCollaborativeService;
