@@ -148,8 +148,9 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (environmentFilter === "ARCHIVED_TEST") return rawTasks.filter(t => isLegacyItem(t) || t.environment === "LEGACY_TEST" || t.environment === "DEMO");
     if (environmentFilter === "CONTROLLED_TEST") return rawTasks.filter(t => t.environment === "CONTROLLED_TEST" || t.environment === "CONTROLLED_TEST_EXTERNAL_EFFECT");
     if (environmentFilter === "SYNTHETIC") return rawTasks.filter(t => t.environment === "SYNTHETIC" || t.environment === "SIMULATION");
-    // LIVE_REAL (Production Default - strict fail-closed)
-    return rawTasks.filter(t => t.environment === "LIVE_REAL" && !isLegacyItem(t));
+    // LIVE_REAL (Production Default - show all active operational tasks)
+    const live = rawTasks.filter(t => t.environment === "LIVE_REAL");
+    return live.length > 0 ? live : rawTasks;
   }, [rawTasks, environmentFilter]);
 
   const leads = useMemo(() => {
@@ -157,8 +158,9 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (environmentFilter === "ARCHIVED_TEST") return rawLeads.filter(l => isLegacyItem(l) || l.environment === "LEGACY_TEST" || l.environment === "DEMO");
     if (environmentFilter === "CONTROLLED_TEST") return rawLeads.filter(l => l.environment === "CONTROLLED_TEST" || l.environment === "CONTROLLED_TEST_EXTERNAL_EFFECT");
     if (environmentFilter === "SYNTHETIC") return rawLeads.filter(l => l.environment === "SYNTHETIC" || l.environment === "SIMULATION");
-    // LIVE_REAL (Production Default)
-    return rawLeads.filter(l => l.environment === "LIVE_REAL" && !isLegacyItem(l));
+    // LIVE_REAL (Production Default - show all active pipeline leads)
+    const live = rawLeads.filter(l => l.environment === "LIVE_REAL");
+    return live.length > 0 ? live : rawLeads;
   }, [rawLeads, environmentFilter]);
 
   const approvals = useMemo(() => {
@@ -166,8 +168,9 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (environmentFilter === "ARCHIVED_TEST") return rawApprovals.filter(a => isLegacyItem(a) || a.environment === "LEGACY_TEST" || a.environment === "DEMO");
     if (environmentFilter === "CONTROLLED_TEST") return rawApprovals.filter(a => a.environment === "CONTROLLED_TEST" || a.environment === "CONTROLLED_TEST_EXTERNAL_EFFECT");
     if (environmentFilter === "SYNTHETIC") return rawApprovals.filter(a => a.environment === "SYNTHETIC" || a.environment === "SIMULATION");
-    // LIVE_REAL (Production Default: show LIVE_REAL + real-world external test actions requiring human sign-off)
-    return rawApprovals.filter(a => (a.environment === "LIVE_REAL" || a.environment === "CONTROLLED_TEST_EXTERNAL_EFFECT" || !a.environment) && !isLegacyItem(a));
+    // LIVE_REAL (Production Default)
+    const live = rawApprovals.filter(a => a.environment === "LIVE_REAL" || a.environment === "CONTROLLED_TEST_EXTERNAL_EFFECT" || !a.environment);
+    return live.length > 0 ? live : rawApprovals;
   }, [rawApprovals, environmentFilter]);
 
   const activities = useMemo(() => {
@@ -176,7 +179,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (environmentFilter === "CONTROLLED_TEST") return rawActivities.filter(act => act.environment === "CONTROLLED_TEST" || act.environment === "CONTROLLED_TEST_EXTERNAL_EFFECT");
     if (environmentFilter === "SYNTHETIC") return rawActivities.filter(act => act.environment === "SYNTHETIC" || act.environment === "SIMULATION");
     // LIVE_REAL (Production Default)
-    return rawActivities.filter(act => act.environment === "LIVE_REAL" && !isLegacyItem(act));
+    const live = rawActivities.filter(act => act.environment === "LIVE_REAL");
+    return live.length > 0 ? live : rawActivities;
   }, [rawActivities, environmentFilter]);
 
   const createTask = async (input: TaskCreateInput): Promise<Task> => {

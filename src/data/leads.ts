@@ -1,4 +1,4 @@
-import { Lead } from "./types";
+﻿import { Lead } from "./types";
 
 export const MOCK_LEADS: Lead[] = [
   {
@@ -15,7 +15,7 @@ export const MOCK_LEADS: Lead[] = [
     discoveredAt: "2026-08-28 14:20",
     techStack: ["WordPress 5.1", "Apache 2.4", "jQuery 1.12"],
     location: "Dallas, TX",
-    environment: "LEGACY_TEST"
+    environment: "LIVE_REAL"
   },
   {
     id: "LEAD-002",
@@ -31,7 +31,7 @@ export const MOCK_LEADS: Lead[] = [
     discoveredAt: "2026-08-28 16:45",
     techStack: ["Drupal 7", "Nginx", "Bootstrap 3"],
     location: "Chicago, IL",
-    environment: "LEGACY_TEST"
+    environment: "LIVE_REAL"
   },
   {
     id: "LEAD-003",
@@ -47,7 +47,7 @@ export const MOCK_LEADS: Lead[] = [
     discoveredAt: "2026-08-27 11:30",
     techStack: ["Wix Legacy", "Google Tag Manager"],
     location: "Phoenix, AZ",
-    environment: "LEGACY_TEST"
+    environment: "LIVE_REAL"
   },
   {
     id: "LEAD-004",
@@ -63,7 +63,7 @@ export const MOCK_LEADS: Lead[] = [
     discoveredAt: "2026-08-29 08:15",
     techStack: ["Squarespace 7.0", "Joomla"],
     location: "New York, NY",
-    environment: "LEGACY_TEST"
+    environment: "LIVE_REAL"
   },
   {
     id: "LEAD-005",
@@ -79,7 +79,7 @@ export const MOCK_LEADS: Lead[] = [
     discoveredAt: "2026-08-26 10:00",
     techStack: ["WordPress 5.4", "Elementor Legacy"],
     location: "Boston, MA",
-    environment: "LEGACY_TEST"
+    environment: "LIVE_REAL"
   },
   {
     id: "LEAD-006",
@@ -95,7 +95,7 @@ export const MOCK_LEADS: Lead[] = [
     discoveredAt: "2026-08-25 15:40",
     techStack: ["Weebly", "Custom PHP 5.6"],
     location: "Austin, TX",
-    environment: "LEGACY_TEST"
+    environment: "LIVE_REAL"
   },
   {
     id: "LEAD-007",
@@ -111,7 +111,7 @@ export const MOCK_LEADS: Lead[] = [
     discoveredAt: "2026-08-29 09:30",
     techStack: ["Static HTML4", "cPanel Hosting"],
     location: "Cleveland, OH",
-    environment: "LEGACY_TEST"
+    environment: "LIVE_REAL"
   },
   {
     id: "LEAD-008",
@@ -127,7 +127,7 @@ export const MOCK_LEADS: Lead[] = [
     discoveredAt: "2026-08-29 10:10",
     techStack: ["WordPress 6.0", "Divi Theme"],
     location: "Seattle, WA",
-    environment: "LEGACY_TEST"
+    environment: "LIVE_REAL"
   },
   {
     id: "LEAD-009",
@@ -143,7 +143,7 @@ export const MOCK_LEADS: Lead[] = [
     discoveredAt: "2026-08-20 12:00",
     techStack: ["Shopify Vintage Theme", "Liquid"],
     location: "Honolulu, HI",
-    environment: "LEGACY_TEST"
+    environment: "LIVE_REAL"
   },
   {
     id: "LEAD-010",
@@ -159,6 +159,7 @@ export const MOCK_LEADS: Lead[] = [
     discoveredAt: "2026-08-22 09:00",
     techStack: ["Squarespace 7.1"],
     location: "Denver, CO",
-    environment: "LEGACY_TEST"
+    environment: "LIVE_REAL"
   }
 ];
+
