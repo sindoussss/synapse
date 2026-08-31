@@ -7,7 +7,6 @@ import {
   RotateCw, CheckCircle2, Shield, Eye, Sparkles, BarChart3
 } from 'lucide-react';
 import { DeveloperBenchmarkModal } from '@/components/preview/DeveloperBenchmarkModal';
-import { LiveAgentInspector } from '@/components/preview/LiveAgentInspector';
 
 const PREVIEW_PROJECTS = [
   {
@@ -68,14 +67,6 @@ export default function LivePreviewStudioPage() {
         isOpen={showBenchmarks}
         onClose={() => setShowBenchmarks(false)}
         projectName={selectedProject.name}
-      />
-
-      {/* Floating Left Operations HUD */}
-      <LiveAgentInspector 
-        projectName={selectedProject.name}
-        projectId={selectedProject.id}
-      />
-
       {/* Top Staging Control Bar */}
       <header className="bg-white border-b border-[#e5e5e5] px-6 h-16 flex items-center justify-between sticky top-0 z-30 shadow-xs">
         {/* Left: Back & Project Selection */}
