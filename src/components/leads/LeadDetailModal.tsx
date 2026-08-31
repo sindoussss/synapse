@@ -113,14 +113,14 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, 
         </div>
 
         {/* Autonomous Action Dispatches */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <div className="p-3 bg-[#0f172a] border border-[#3b82f6]/40 flex flex-col justify-between space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          <div className="p-3.5 bg-white border border-[#d4d4d0] rounded flex flex-col justify-between space-y-3 shadow-xs">
             <div>
-              <span className="font-bold text-[#f8fafc] flex items-center gap-1.5">
-                <Sparkles size={13} className="text-[#1a365d]" />
+              <span className="font-bold text-[#111111] flex items-center gap-1.5 text-xs">
+                <Sparkles size={13} className="text-[#111111]" />
                 Technical & UX Audit
               </span>
-              <p className="text-[11px] text-[#94a3b8] font-sans mt-0.5">
+              <p className="text-[11px] text-[#555555] font-sans mt-1 leading-relaxed">
                 Dispatch Website Analyst to inspect response time, mobile viewport, and conversion friction.
               </p>
             </div>
@@ -135,13 +135,13 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, 
             </Button>
           </div>
 
-          <div className="p-3 bg-[#f8fafc]/40 border border-[#8b5cf6]/40 flex flex-col justify-between space-y-2">
+          <div className="p-3.5 bg-white border border-[#d4d4d0] rounded flex flex-col justify-between space-y-3 shadow-xs">
             <div>
-              <span className="font-bold text-[#f8fafc] flex items-center gap-1.5">
-                <Code2 size={13} className="text-[#a78bfa]" />
+              <span className="font-bold text-[#111111] flex items-center gap-1.5 text-xs">
+                <Code2 size={13} className="text-[#111111]" />
                 Redesign Concept
               </span>
-              <p className="text-[11px] text-[#c4b5fd]/80 font-sans mt-0.5">
+              <p className="text-[11px] text-[#555555] font-sans mt-1 leading-relaxed">
                 Dispatch Developer Agent to scaffold a personalized Next.js concept.
               </p>
             </div>
@@ -156,13 +156,13 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, 
             </Button>
           </div>
 
-          <div className="p-3 bg-[#ecfdf5]/30 border border-[#10b981]/40 flex flex-col justify-between space-y-2">
+          <div className="p-3.5 bg-white border border-[#d4d4d0] rounded flex flex-col justify-between space-y-3 shadow-xs">
             <div>
-              <span className="font-bold text-[#f8fafc] flex items-center gap-1.5">
-                <Mail size={13} className="text-[#047857]" />
+              <span className="font-bold text-[#111111] flex items-center gap-1.5 text-xs">
+                <Mail size={13} className="text-[#111111]" />
                 Sales Outreach Draft
               </span>
-              <p className="text-[11px] text-[#a7f3d0]/80 font-sans mt-0.5">
+              <p className="text-[11px] text-[#555555] font-sans mt-1 leading-relaxed">
                 Dispatch Sales Agent to formulate a respectful email with preview link.
               </p>
             </div>
